@@ -568,10 +568,19 @@ function buildWriteMultiple(slave, addr, vals) {
 }
 
 const REG = {
-  VOLTAGE_SET: 0x0000, CURRENT_SET: 0x0002, OUTPUT_ENABLE: 0x0006,
-  OVP_SET: 0x0008, OCP_SET: 0x000A, OPP_SET: 0x000C,
-  VOLTAGE_DISPLAY: 0x0010, CURRENT_DISPLAY: 0x0012, POWER_DISPLAY: 0x0014,
-  PROTECT_STATUS: 0x0020,
+  // From OEM documentation (Hanmatek HM310T)
+  OUTPUT_ENABLE: 0x0001,      // Boolean: 0=off, 1=on
+  PROTECT_STATUS: 0x0002,     // Bitfield struct
+  VOLTAGE_DISPLAY: 0x0010,    // unsigned short, 2 decimal places
+  CURRENT_DISPLAY: 0x0011,    // unsigned short, 3 decimal places
+  POWER_DISPLAY_LO: 0x0012,   // Power low word, 3 decimal places
+  POWER_DISPLAY_HI: 0x0013, // Power high word
+  VOLTAGE_SET: 0x0030,       // unsigned short, 2 decimal places, r/w
+  CURRENT_SET: 0x0031,       // unsigned short, 3 decimal places, r/w
+  OVP_SET: 0x0020,            // unsigned short, 2 decimal places, r/w
+  OCP_SET: 0x0021,            // unsigned short, 2 decimal places, r/w
+  OPP_SET: 0x0022,            // unsigned short, 2 decimal places, r/w (low word)
+  COMM_ADDR: 0x9999,          // byte 1-250, r/w
 };
 
 // --- State ---
@@ -659,9 +668,9 @@ function simSendFrame(frame) {
         if (addr === REG.OUTPUT_ENABLE) { simOutput = !!val; updateOutputUI(simOutput); }
         else if (addr === REG.VOLTAGE_SET) { simSetV = val/100; $('setV').textContent = simSetV.toFixed(3); }
         else if (addr === REG.CURRENT_SET) { simSetA = val/1000; $('setA').textContent = simSetA.toFixed(3); }
-      } else if (fn === 0x10) {
-        if (addr === REG.VOLTAGE_SET) { const lo=val, hi=(frame[7]<<8)|frame[8]; simSetV = ((hi<<16)|lo)/100; $('setV').textContent = simSetV.toFixed(3); }
-        else if (addr === REG.CURRENT_SET) { const lo=val, hi=(frame[7]<<8)|frame[8]; simSetA = ((hi<<16)|lo)/1000; $('setA').textContent = simSetA.toFixed(3); }
+        else if (addr === REG.OVP_SET) { /* OVP set */ }
+        else if (addr === REG.OCP_SET) { /* OCP set */ }
+        else if (addr === REG.OPP_SET) { /* OPP set */ }
       }
       const resp = new Uint8Array(frame.slice(0, frame.length-2));
       const crc = crc16(resp); const out = new Uint8Array(resp.length+2); out.set(resp); out.set(crc, resp.length);
@@ -672,13 +681,17 @@ function simSendFrame(frame) {
 function simReadInput(addr, count) { return simReadHolding(addr, count); }
 function simReadHolding(addr, count) {
   const data = [];
-  if (addr === REG.VOLTAGE_SET) { const raw = Math.round(simSetV*100); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
-  else if (addr === REG.CURRENT_SET) { const raw = Math.round(simSetA*1000); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
+  if (addr === REG.VOLTAGE_SET) { data.push(Math.round(simSetV*100)); }
+  else if (addr === REG.CURRENT_SET) { data.push(Math.round(simSetA*1000)); }
   else if (addr === REG.OUTPUT_ENABLE) { data.push(simOutput?1:0); }
-  else if (addr === REG.OVP_SET) { const raw = Math.round((parseFloat($('setOVP').value)||30)*100); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
-  else if (addr === REG.OCP_SET) { const raw = Math.round((parseFloat($('setOCP').value)||10)*1000); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
-  else if (addr === REG.OPP_SET) { const raw = Math.round((parseFloat($('setOPP').value)||300)*100); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
   else if (addr === REG.PROTECT_STATUS) { data.push(0); }
+  else if (addr === REG.VOLTAGE_DISPLAY) { data.push(Math.round(simV*100)); }
+  else if (addr === REG.CURRENT_DISPLAY) { data.push(Math.round(simA*1000)); }
+  else if (addr === REG.POWER_DISPLAY_LO) { const raw = Math.round(simV*simA*1000); data.push(raw&0xFFFF); }
+  else if (addr === REG.POWER_DISPLAY_HI) { const raw = Math.round(simV*simA*1000); data.push((raw>>>16)&0xFFFF); }
+  else if (addr === REG.OVP_SET) { data.push(Math.round((parseFloat($('setOVP').value)||30)*100)); }
+  else if (addr === REG.OCP_SET) { data.push(Math.round((parseFloat($('setOCP').value)||10)*100)); }
+  else if (addr === REG.OPP_SET) { data.push(Math.round((parseFloat($('setOPP').value)||300)*100)); }
   const bytes = data.length*2;
   const resp = new Uint8Array([1, 0x03, bytes]);
   const full = new Uint8Array(resp.length + bytes + 2);
@@ -789,28 +802,32 @@ function updateChargerUI() {
 function updateAllButtons() { updateSeqButtons(); updateLogButtons(); $('btnChargeStart').disabled = !connected || chargeRunning; $('btnChargeStop').disabled = !chargeRunning; $('btnIVRun').disabled = !connected || ivRunning; }
 
 // --- Commands ---
-async function cmdSetVoltage(v) { const raw = Math.round(v*100); await writeMultipleRegs(REG.VOLTAGE_SET, encodeU32(raw)); commLog(`Set voltage ${v.toFixed(2)} V`, 'ok'); $('setV').textContent = v.toFixed(3); if (simMode) simSetV = v; }
-async function cmdSetCurrent(a) { const raw = Math.round(a*1000); await writeMultipleRegs(REG.CURRENT_SET, encodeU32(raw)); commLog(`Set current ${a.toFixed(3)} A`, 'ok'); $('setA').textContent = a.toFixed(3); if (simMode) simSetA = a; }
+async function cmdSetVoltage(v) { const raw = Math.round(v*100); await writeHoldingReg(REG.VOLTAGE_SET, raw); commLog(`Set voltage ${v.toFixed(2)} V`, 'ok'); $('setV').textContent = v.toFixed(3); if (simMode) simSetV = v; }
+async function cmdSetCurrent(a) { const raw = Math.round(a*1000); await writeHoldingReg(REG.CURRENT_SET, raw); commLog(`Set current ${a.toFixed(3)} A`, 'ok'); $('setA').textContent = a.toFixed(3); if (simMode) simSetA = a; }
 async function cmdSetOutput(on) { await writeHoldingReg(REG.OUTPUT_ENABLE, on?1:0); updateOutputUI(on); commLog(`Output ${on?'ON':'OFF'}`, on?'ok':'err'); if (simMode) simOutput = on; }
 
 async function cmdReadAll() {
   if (simMode) return { v: simV, a: simA, p: simV*simA, out: simOutput };
   try {
-    // Read sequentially — HM310T cannot handle concurrent Modbus requests
-    const vDisp = await readInputRegs(REG.VOLTAGE_DISPLAY, 2);
-    const aDisp = await readInputRegs(REG.CURRENT_DISPLAY, 2);
-    const pDisp = await readInputRegs(REG.POWER_DISPLAY, 2);
-    const vSet  = await readHoldingRegs(REG.VOLTAGE_SET, 2);
-    const aSet  = await readHoldingRegs(REG.CURRENT_SET, 2);
-    const prot  = await readHoldingRegs(REG.PROTECT_STATUS, 1);
-    const out   = await readHoldingRegs(REG.OUTPUT_ENABLE, 1);
+    // Read sequentially using correct HM310T OEM register addresses
+    const vDisp = await readHoldingRegs(REG.VOLTAGE_DISPLAY, 1);
+    const aDisp = await readHoldingRegs(REG.CURRENT_DISPLAY, 1);
+    const pLo = await readHoldingRegs(REG.POWER_DISPLAY_LO, 1);
+    const pHi = await readHoldingRegs(REG.POWER_DISPLAY_HI, 1);
+    const vSet = await readHoldingRegs(REG.VOLTAGE_SET, 1);
+    const aSet = await readHoldingRegs(REG.CURRENT_SET, 1);
+    const prot = await readHoldingRegs(REG.PROTECT_STATUS, 1);
+    const out = await readHoldingRegs(REG.OUTPUT_ENABLE, 1);
 
-    const v = decodeU32(vDisp[0],vDisp[1])/100, a = decodeU32(aDisp[0],aDisp[1])/1000, p = decodeU32(pDisp[0],pDisp[1])/100;
-    const vs = decodeU32(vSet[0],vSet[1])/100, as = decodeU32(aSet[0],aSet[1])/1000;
+    const v = vDisp[0] / 100;
+    const a = aDisp[0] / 1000;
+    const p = decodeU32(pLo[0], pHi[0]) / 1000;
+    const vs = vSet[0] / 100;
+    const as = aSet[0] / 1000;
     $('dispV').textContent = v.toFixed(3); $('dispA').textContent = a.toFixed(3); $('dispW').textContent = p.toFixed(1);
     $('setV').textContent = vs.toFixed(3); $('setA').textContent = as.toFixed(3);
     updateOutputUI(!!out[0]);
-    const ps = prot[0]||0;
+    const ps = prot[0] || 0;
     $('protOVP').classList.toggle('active', !!(ps&0x01)); $('protOCP').classList.toggle('active', !!(ps&0x02)); $('protOPP').classList.toggle('active', !!(ps&0x04));
     $('protOTP').classList.toggle('active', !!(ps&0x08)); $('protSCP').classList.toggle('active', !!(ps&0x10)); $('protFan').classList.toggle('active', !!(ps&0x20));
     lastReadV = v; lastReadA = a; lastReadP = p;
@@ -1329,19 +1346,21 @@ $('btnApplyProt').addEventListener('click', async () => {
   const ocp = parseFloat($('setOCP').value) || 10;
   const opp = parseFloat($('setOPP').value) || 300;
   try {
-    await writeMultipleRegs(REG.OVP_SET, encodeU32(Math.round(ovp * 100)));
-    await writeMultipleRegs(REG.OCP_SET, encodeU32(Math.round(ocp * 1000)));
-    await writeMultipleRegs(REG.OPP_SET, encodeU32(Math.round(opp * 100)));
+    await writeHoldingReg(REG.OVP_SET, Math.round(ovp * 100));
+    await writeHoldingReg(REG.OCP_SET, Math.round(ocp * 100));
+    await writeHoldingReg(REG.OPP_SET, Math.round(opp * 100));
     commLog(`Protection set: OVP=${ovp}V OCP=${ocp}A OPP=${opp}W`, 'ok');
   } catch (e) { commLog('Failed to set protection: ' + e.message, 'err'); }
 });
 $('btnReadProt').addEventListener('click', async () => {
   if (!connected) { commLog('Not connected', 'err'); return; }
   try {
-    const [ovp, ocp, opp] = await Promise.all([readHoldingRegs(REG.OVP_SET, 2), readHoldingRegs(REG.OCP_SET, 2), readHoldingRegs(REG.OPP_SET, 2)]);
-    $('setOVP').value = (decodeU32(ovp[0], ovp[1]) / 100).toFixed(2);
-    $('setOCP').value = (decodeU32(ocp[0], ocp[1]) / 1000).toFixed(3);
-    $('setOPP').value = (decodeU32(opp[0], opp[1]) / 100).toFixed(1);
+    const ovp = await readHoldingRegs(REG.OVP_SET, 1);
+    const ocp = await readHoldingRegs(REG.OCP_SET, 1);
+    const opp = await readHoldingRegs(REG.OPP_SET, 1);
+    $('setOVP').value = (ovp[0] / 100).toFixed(2);
+    $('setOCP').value = (ocp[0] / 100).toFixed(2);
+    $('setOPP').value = (opp[0] / 100).toFixed(1);
     commLog('Protection thresholds read from device', 'ok');
   } catch (e) { commLog('Failed to read protection: ' + e.message, 'err'); }
 });
