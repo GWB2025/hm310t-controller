@@ -775,10 +775,15 @@ async function cmdSetOutput(on) { await writeHoldingReg(REG.OUTPUT_ENABLE, on?1:
 async function cmdReadAll() {
   if (simMode) return { v: simV, a: simA, p: simV*simA, out: simOutput };
   try {
-    const [vDisp, aDisp, pDisp, vSet, aSet, prot, out] = await Promise.all([
-      readInputRegs(REG.VOLTAGE_DISPLAY,2), readInputRegs(REG.CURRENT_DISPLAY,2), readInputRegs(REG.POWER_DISPLAY,2),
-      readHoldingRegs(REG.VOLTAGE_SET,2), readHoldingRegs(REG.CURRENT_SET,2), readHoldingRegs(REG.PROTECT_STATUS,1), readHoldingRegs(REG.OUTPUT_ENABLE,1)
-    ]);
+    // Read sequentially — HM310T cannot handle concurrent Modbus requests
+    const vDisp = await readInputRegs(REG.VOLTAGE_DISPLAY, 2);
+    const aDisp = await readInputRegs(REG.CURRENT_DISPLAY, 2);
+    const pDisp = await readInputRegs(REG.POWER_DISPLAY, 2);
+    const vSet  = await readHoldingRegs(REG.VOLTAGE_SET, 2);
+    const aSet  = await readHoldingRegs(REG.CURRENT_SET, 2);
+    const prot  = await readHoldingRegs(REG.PROTECT_STATUS, 1);
+    const out   = await readHoldingRegs(REG.OUTPUT_ENABLE, 1);
+
     const v = decodeU32(vDisp[0],vDisp[1])/100, a = decodeU32(aDisp[0],aDisp[1])/1000, p = decodeU32(pDisp[0],pDisp[1])/100;
     const vs = decodeU32(vSet[0],vSet[1])/100, as = decodeU32(aSet[0],aSet[1])/1000;
     $('dispV').textContent = v.toFixed(3); $('dispA').textContent = a.toFixed(3); $('dispW').textContent = p.toFixed(1);
