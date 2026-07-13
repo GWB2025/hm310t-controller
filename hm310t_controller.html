@@ -669,22 +669,7 @@ function simSendFrame(frame) {
     }, 20 + Math.random()*30);
   });
 }
-function simReadInput(addr, count) {
-  const data = [];
-  if (addr === REG.VOLTAGE_DISPLAY) { const raw = Math.round(simV*100); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
-  else if (addr === REG.CURRENT_DISPLAY) { const raw = Math.round(simA*1000); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
-  else if (addr === REG.POWER_DISPLAY) { const raw = Math.round(simV*simA*100); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
-  else if (addr === REG.PROTECT_STATUS) { data.push(0); }
-  else if (addr === REG.OUTPUT_ENABLE) { data.push(simOutput?1:0); }
-  const bytes = data.length*2;
-  const resp = new Uint8Array([1, 0x04, bytes]);
-  const full = new Uint8Array(resp.length + bytes + 2);
-  full.set(resp);
-  for (let i=0;i<data.length;i++) { full[3+i*2] = (data[i]>>>8); full[4+i*2] = (data[i]&0xFF); }
-  const crc = crc16(full.slice(0, full.length-2));
-  full.set(crc, full.length-2);
-  return full;
-}
+function simReadInput(addr, count) { return simReadHolding(addr, count); }
 function simReadHolding(addr, count) {
   const data = [];
   if (addr === REG.VOLTAGE_SET) { const raw = Math.round(simSetV*100); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
@@ -769,7 +754,7 @@ async function sendFrame(frame, timeout=600) {
 
 // --- Modbus helpers ---
 async function readHoldingRegs(addr, count) { if (simMode) return simReadHolding(addr, count); const f = buildFrame(1,0x03,addr,count); const r = await sendFrame(f); const bytes=r[2]; const d=[]; for(let i=0;i<bytes/2;i++) d.push((r[3+i*2]<<8)|r[4+i*2]); return d; }
-async function readInputRegs(addr, count) { if (simMode) return simReadInput(addr, count); const f = buildFrame(1,0x04,addr,count); const r = await sendFrame(f); const bytes=r[2]; const d=[]; for(let i=0;i<bytes/2;i++) d.push((r[3+i*2]<<8)|r[4+i*2]); return d; }
+async function readInputRegs(addr, count) { return readHoldingRegs(addr, count); }
 async function writeHoldingReg(addr, val) { return sendFrame(buildFrame(1,0x06,addr,val)); }
 async function writeMultipleRegs(addr, vals) { return sendFrame(buildWriteMultiple(1,addr,vals)); }
 async function writeCoil(addr, on) { return sendFrame(buildFrame(1,0x05,addr,on?0xFF00:0x0000)); }
