@@ -2,7 +2,7 @@
 
 A fully-featured, single-file browser application for controlling the **HANMATEK HM310T** programmable DC power supply (0–30 V, 0–10 A, 300 W) over USB/Modbus RTU. No installation, no build step, no server — just open the HTML file in Chrome or Edge and connect.
 
-[![Launch App](https://img.shields.io/badge/Launch%20App-Open%20in%20Browser-4ecdc4?style=for-the-badge&logo=google-chrome&logoColor=white)](https://gwb2025.github.io/HANMATEK-Programmable-DC-Power-Supply-HM310T)
+[![Launch App](https://img.shields.io/badge/Launch%20App-Open%20in%20Browser-4ecdc4?style=for-the-badge&logo=google-chrome&logoColor=white)](https://GWB2025.github.io/hm310t-controller/hm310t_controller.html)
 
 
 ![Screenshot](screenshot.png)
