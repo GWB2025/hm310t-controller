@@ -750,7 +750,7 @@ function handleFrame(frame) {
   if (fn & 0x80) { const exc = frame[2]; commLog('Modbus exception 0x' + exc.toString(16), 'err'); if (pendingPromise) { pendingPromise.reject(new Error('Exc 0x'+exc.toString(16))); pendingPromise = null; } return; }
   if (pendingPromise) { pendingPromise.resolve(frame); pendingPromise = null; }
 }
-async function sendFrame(frame, timeout=600) {
+async function sendFrame(frame, timeout=800) {
   if (simMode) {
     const resp = await simSendFrame(frame);
     commLog('→ ' + Array.from(frame).map(b=>b.toString(16).padStart(2,'0')).join(' ') + ' [SIM]', 'sim');
@@ -806,17 +806,19 @@ async function cmdSetVoltage(v) { const raw = Math.round(v*100); await writeHold
 async function cmdSetCurrent(a) { const raw = Math.round(a*1000); await writeHoldingReg(REG.CURRENT_SET, raw); commLog(`Set current ${a.toFixed(3)} A`, 'ok'); $('setA').textContent = a.toFixed(3); if (simMode) simSetA = a; }
 async function cmdSetOutput(on) { await writeHoldingReg(REG.OUTPUT_ENABLE, on?1:0); updateOutputUI(on); commLog(`Output ${on?'ON':'OFF'}`, on?'ok':'err'); if (simMode) simOutput = on; }
 
+async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
 async function cmdReadAll() {
   if (simMode) return { v: simV, a: simA, p: simV*simA, out: simOutput };
   try {
-    // Read sequentially using correct HM310T OEM register addresses
-    const vDisp = await readHoldingRegs(REG.VOLTAGE_DISPLAY, 1);
-    const aDisp = await readHoldingRegs(REG.CURRENT_DISPLAY, 1);
-    const pLo = await readHoldingRegs(REG.POWER_DISPLAY_LO, 1);
-    const pHi = await readHoldingRegs(REG.POWER_DISPLAY_HI, 1);
-    const vSet = await readHoldingRegs(REG.VOLTAGE_SET, 1);
-    const aSet = await readHoldingRegs(REG.CURRENT_SET, 1);
-    const prot = await readHoldingRegs(REG.PROTECT_STATUS, 1);
+    // Read sequentially with delays — HM310T may need time between requests
+    const vDisp = await readHoldingRegs(REG.VOLTAGE_DISPLAY, 1); await sleep(50);
+    const aDisp = await readHoldingRegs(REG.CURRENT_DISPLAY, 1); await sleep(50);
+    const pLo = await readHoldingRegs(REG.POWER_DISPLAY_LO, 1); await sleep(50);
+    const pHi = await readHoldingRegs(REG.POWER_DISPLAY_HI, 1); await sleep(50);
+    const vSet = await readHoldingRegs(REG.VOLTAGE_SET, 1); await sleep(50);
+    const aSet = await readHoldingRegs(REG.CURRENT_SET, 1); await sleep(50);
+    const prot = await readHoldingRegs(REG.PROTECT_STATUS, 1); await sleep(50);
     const out = await readHoldingRegs(REG.OUTPUT_ENABLE, 1);
 
     const v = vDisp[0] / 100;
@@ -837,7 +839,11 @@ async function cmdReadAll() {
     if (chartData.v.length > maxChartPts) { chartData.v.shift(); chartData.a.shift(); chartData.t.shift(); }
     drawChart();
     return { v, a, p, out: !!out[0] };
-  } catch (e) { commLog('Read error: ' + e.message, 'err'); return null; }
+  } catch (e) { 
+    // If reads fail, at least show the last known setpoint values
+    commLog('Read error: ' + e.message, 'err'); 
+    return null; 
+  }
 }
 
 // ==================== MATH CHANNELS ====================
@@ -942,7 +948,16 @@ window.addEventListener('resize', drawChart);
 
 // --- Polling ---
 function startPolling() { polling = true; tick(); }
-function tick() { if (!polling || !connected) return; if ($('autoPoll').checked && !seqRunning && !chargeRunning && !ivRunning) cmdReadAll(); pollTimer = setTimeout(tick, parseInt($('pollMs').value)||500); }
+let tickRunning = false;
+async function tick() { 
+  if (!polling || !connected) return; 
+  if (!tickRunning && $('autoPoll').checked && !seqRunning && !chargeRunning && !ivRunning) {
+    tickRunning = true;
+    try { await cmdReadAll(); } catch(e) { /* ignore */ }
+    tickRunning = false;
+  }
+  pollTimer = setTimeout(tick, parseInt($('pollMs').value)||500); 
+}
 
 // ==================== DATA LOGGER ====================
 function startLogger() {
