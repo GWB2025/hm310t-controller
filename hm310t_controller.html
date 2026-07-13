@@ -480,6 +480,42 @@
     </div>
 
     <!-- Settings -->
+    <!-- Protocol Scanner -->
+    <div class="panel">
+      <div class="panel-title">Protocol Scanner</div>
+      <div class="control-group"><label>Baud Rate</label>
+        <div class="input-wrap"><select id="scanBaud">
+          <option value="9600" selected>9600</option>
+          <option value="115200">115200</option>
+          <option value="4800">4800</option>
+          <option value="19200">19200</option>
+          <option value="38400">38400</option>
+          <option value="57600">57600</option>
+        </select></div>
+      </div>
+      <div class="control-group" style="margin-top:6px;"><label>Slave Address</label>
+        <div class="input-wrap"><input type="number" id="scanSlave" min="0" max="247" step="1" value="1"></div>
+      </div>
+      <div class="control-group" style="margin-top:6px;"><label>Parity</label>
+        <div class="input-wrap"><select id="scanParity">
+          <option value="none" selected>None</option>
+          <option value="even">Even</option>
+          <option value="odd">Odd</option>
+        </select></div>
+      </div>
+      <div class="control-group" style="margin-top:6px;"><label>Data Bits</label>
+        <div class="input-wrap"><select id="scanDataBits"><option value="8" selected>8</option><option value="7">7</option></select></div>
+      </div>
+      <div class="control-group" style="margin-top:6px;"><label>Stop Bits</label>
+        <div class="input-wrap"><select id="scanStopBits"><option value="1" selected>1</option><option value="2">2</option></select></div>
+      </div>
+      <div class="quick-actions" style="margin-top:10px;">
+        <button class="btn btn-primary" id="btnScanAuto">Auto Scan</button>
+        <button class="btn" id="btnScanOnce">Test Once</button>
+      </div>
+      <div class="comm-log-area" id="scanLog" style="height:80px;margin-top:8px;font-size:10px;"></div>
+    </div>
+
     <div class="panel">
       <div class="panel-title">Settings</div>
       <div class="control-group"><label>Poll Interval (ms)</label><div class="input-wrap"><input type="number" id="pollMs" min="100" max="5000" step="100" value="500"></div></div>
@@ -1437,6 +1473,89 @@ window.cmdReadAll = cmdReadAll;
 window.cmdSetOutput = cmdSetOutput;
 window.cmdSetVoltage = cmdSetVoltage;
 window.cmdSetCurrent = cmdSetCurrent;
+
+// ==================== PROTOCOL SCANNER ====================
+function scanLog(msg, cls='') {
+  const el = $('scanLog');
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="${cls}">${msg}</span>`;
+  el.appendChild(line); el.scrollTop = el.scrollHeight;
+  while (el.children.length > 50) el.removeChild(el.firstChild);
+}
+
+async function openPortWithParams(baud, parity, dataBits, stopBits) {
+  if (simMode) return true;
+  if (!('serial' in navigator)) { alert('Web Serial API not supported.'); return false; }
+  try {
+    // Close existing port if open
+    if (port) {
+      try { await port.close(); } catch(e){}
+      port = null; reader = null; writer = null;
+    }
+    // Request a new port
+    port = await navigator.serial.requestPort({ filters: [] });
+    await port.open({ baudRate: baud, dataBits: dataBits, stopBits: stopBits, parity: parity });
+    writer = port.writable.getWriter();
+    reader = port.readable.getReader();
+    connected = true; updateConnUI(true);
+    startReadLoop();
+    return true;
+  } catch (e) { scanLog('Open failed: ' + e.message, 'err'); return false; }
+}
+
+async function testConnectionOnce() {
+  if (!port) { scanLog('No port open. Click Connect USB first.', 'err'); return; }
+  const slave = parseInt($('scanSlave').value) || 1;
+  const frame = buildFrame(slave, 0x04, REG.VOLTAGE_DISPLAY, 2);
+  scanLog(`Testing slave=${slave}...`, 'cmd');
+  try {
+    await sendFrame(frame, 800);
+    scanLog('RESPONSE RECEIVED! This slave address works.', 'ok');
+  } catch (e) {
+    scanLog('No response: ' + e.message, 'err');
+  }
+}
+
+async function autoScan() {
+  if (!port) { scanLog('No port open. Click Connect USB first.', 'err'); return; }
+  const bauds = [9600, 115200, 4800, 19200, 38400, 57600];
+  const slaves = [1, 0, 2, 247, 255];
+  const parities = ['none', 'even', 'odd'];
+  scanLog('Starting auto-scan...', 'info');
+  for (const baud of bauds) {
+    for (const parity of parities) {
+      scanLog(`Trying ${baud} baud, ${parity} parity...`, 'cmd');
+      try {
+        // Reopen port with new params
+        await port.close();
+        await port.open({ baudRate: baud, dataBits: 8, stopBits: 1, parity: parity });
+        writer = port.writable.getWriter();
+        reader = port.readable.getReader();
+        startReadLoop();
+        await new Promise(r => setTimeout(r, 200));
+        for (const slave of slaves) {
+          const frame = buildFrame(slave, 0x04, REG.VOLTAGE_DISPLAY, 2);
+          try {
+            await sendFrame(frame, 600);
+            scanLog(`FOUND! Baud=${baud} Parity=${parity} Slave=${slave}`, 'ok');
+            $('scanBaud').value = baud;
+            $('scanSlave').value = slave;
+            $('scanParity').value = parity;
+            return;
+          } catch (e) {
+            // timeout, try next
+          }
+        }
+      } catch (e) {
+        scanLog(`Failed to open at ${baud}/${parity}: ${e.message}`, 'err');
+      }
+    }
+  }
+  scanLog('Auto-scan complete. No working combination found.', 'err');
+}
+
+$('btnScanOnce').addEventListener('click', testConnectionOnce);
+$('btnScanAuto').addEventListener('click', autoScan);
 
 // ==================== STANDARD EVENTS ====================
 $('btnConnect').addEventListener('click', async () => {
