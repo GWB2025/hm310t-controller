@@ -952,9 +952,7 @@ function clearLogData() { logData = []; $('logTbody').innerHTML = ''; updateLogU
 function exportLogCSV() {
   if (logData.length === 0) { commLog('No data to export', 'err'); return; }
   const rows = logData.map(d => { const ts = new Date(d.t).toISOString(); return `${ts},${d.v.toFixed(4)},${d.a.toFixed(4)},${d.p.toFixed(2)},${d.out?'ON':'OFF'},${d.seqStep!==null?d.seqStep+1:''},${d.chgState!=='idle'?d.chgState:''}`; });
-  const csv = 'timestamp,voltage_V,current_A,power_W,output_state,sequence_step,charge_state
-' + rows.join('
-');
+  const csv = 'timestamp,voltage_V,current_A,power_W,output_state,sequence_step,charge_state\n' + rows.join('\n');
   const blob = new Blob([csv], {type:'text/csv'}); const url = URL.createObjectURL(blob); const a = document.createElement('a');
   const prefix = $('logPrefix').value || 'hm310t_log';
   a.href = url; a.download = `${prefix}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`; a.click(); URL.revokeObjectURL(url);
