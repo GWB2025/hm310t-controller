@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HM310T Controller — Full Featured</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b21; --panel-hover: #1e2229; --border: #2a2f38;
+    --text: #e8e8e8; --text-sec: #9aa0a6; --text-dim: #5f6368;
+    --accent: #4ecdc4; --accent-dim: #3a9e97; --accent-glow: rgba(78,205,196,0.12);
+    --danger: #ff6b6b; --danger-dim: #c44; --danger-glow: rgba(255,107,107,0.12);
+    --positive: #51cf66; --positive-glow: rgba(81,207,102,0.12);
+    --warning: #ffd43b; --warning-glow: rgba(255,212,59,0.12);
+    --input-bg: #111318; --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; border-bottom: 1px solid var(--border); background: var(--panel); flex-wrap: wrap; gap: 10px; }
+  header h1 { font-size: 17px; font-weight: 500; letter-spacing: 0.3px; }
+  header .subtitle { font-size: 11px; color: var(--text-dim); margin-left: 8px; }
+  .conn-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .status-pill { display: flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; font-size: 11px; background: var(--input-bg); border: 1px solid var(--border); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); transition: background 0.3s; }
+  .status-dot.connected { background: var(--positive); box-shadow: 0 0 6px var(--positive); }
+  .status-dot.on { background: var(--warning); box-shadow: 0 0 6px var(--warning); }
+  .status-dot.running { background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: pulse 1.2s infinite; }
+  .status-dot.logging { background: var(--positive); box-shadow: 0 0 6px var(--positive); animation: pulse 1.2s infinite; }
+  .status-dot.charging { background: var(--warning); box-shadow: 0 0 6px var(--warning); animation: pulse 1.2s infinite; }
+  .status-dot.sim { background: #a78bfa; box-shadow: 0 0 6px #a78bfa; }
+  .status-dot.alarm { background: var(--danger); box-shadow: 0 0 6px var(--danger); animation: pulse 0.6s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyframes flash-red { 0%,100%{border-color:var(--border)} 50%{border-color:var(--danger)} }
+
+  button { font-family: var(--font); cursor: pointer; border: none; outline: none; transition: all 0.12s ease; }
+  .btn { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 500; background: var(--input-bg); color: var(--text); border: 1px solid var(--border); }
+  .btn:hover { background: var(--panel-hover); border-color: var(--text-sec); }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--accent); color: #000; border-color: var(--accent); }
+  .btn-primary:hover { background: var(--accent-dim); border-color: var(--accent-dim); }
+  .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+  .btn-danger:hover { background: var(--danger-dim); border-color: var(--danger-dim); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-sm { padding: 5px 10px; font-size: 11px; }
+  .btn-icon { display: inline-flex; align-items: center; gap: 6px; }
+  .btn-toggle { background: var(--border); }
+  .btn-toggle.active { background: #a78bfa; color: #000; border-color: #a78bfa; }
+
+  main { flex: 1; display: grid; grid-template-columns: 1fr 340px; gap: 18px; padding: 18px; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .panel-title { font-size: 12px; font-weight: 500; color: var(--text-sec); text-transform: uppercase; letter-spacing: 0.6px; display: flex; justify-content: space-between; align-items: center; }
+  .panel.alarm { animation: flash-red 1s infinite; }
+
+  .readout-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .readout-grid.six { grid-template-columns: repeat(3, 1fr); }
+  .readout-card { background: var(--input-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; position: relative; overflow: hidden; transition: border-color 0.3s; }
+  .readout-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); opacity: 0.35; }
+  .readout-card.current::before { background: var(--warning); }
+  .readout-card.power::before { background: var(--positive); }
+  .readout-card.resistance::before { background: #a78bfa; }
+  .readout-card.energy::before { background: #f783ac; }
+  .readout-card.capacity::before { background: #74c0fc; }
+  .readout-card.alarm { border-color: var(--danger); }
+  .readout-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .readout-value { font-family: var(--mono); font-size: 28px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .readout-unit { font-size: 12px; color: var(--text-sec); margin-left: 3px; }
+  .readout-setpoint { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+
+  .output-section { display: flex; align-items: center; justify-content: space-between; background: var(--input-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; }
+  .output-label { font-size: 14px; font-weight: 500; }
+  .output-label .state { font-size: 11px; color: var(--text-dim); margin-left: 8px; }
+  .toggle-switch { position: relative; width: 52px; height: 28px; border-radius: 14px; background: var(--border); cursor: pointer; transition: background 0.25s; flex-shrink: 0; }
+  .toggle-switch.on { background: var(--positive); }
+  .toggle-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform 0.25s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  .toggle-switch.on::after { transform: translateX(24px); }
+
+  .control-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+  .control-group { flex: 1; min-width: 140px; }
+  .control-group label { display: block; font-size: 11px; color: var(--text-sec); margin-bottom: 5px; font-weight: 500; }
+  .input-wrap { display: flex; gap: 6px; }
+  .input-wrap input, .input-wrap select {
+    flex: 1; background: var(--input-bg); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 10px; border-radius: 8px; font-family: var(--mono); font-size: 14px; outline: none; transition: border-color 0.15s;
+  }
+  .input-wrap input:focus, .input-wrap select:focus { border-color: var(--accent); }
+  .input-wrap .unit { display: flex; align-items: center; padding: 0 10px; background: var(--border); border-radius: 8px; font-size: 12px; color: var(--text-sec); }
+  .slider-wrap { margin-top: 6px; }
+  input[type="range"] { -webkit-appearance: none; width: 100%; height: 5px; border-radius: 3px; background: var(--border); outline: none; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); cursor: pointer; border: 2px solid var(--bg); box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+  input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); cursor: pointer; border: 2px solid var(--bg); box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+
+  .preset-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .preset-btn { padding: 9px 4px; border-radius: 8px; font-size: 11px; font-weight: 500; background: var(--input-bg); color: var(--text); border: 1px solid var(--border); text-align: center; cursor: pointer; }
+  .preset-btn:hover { background: var(--panel-hover); border-color: var(--text-sec); }
+  .preset-btn .v { font-family: var(--mono); font-size: 13px; display: block; margin-bottom: 1px; }
+  .preset-btn .a { font-size: 10px; color: var(--text-dim); }
+
+  .seq-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .seq-table-wrap { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .seq-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .seq-table th { text-align: left; padding: 8px 10px; background: var(--input-bg); color: var(--text-sec); font-weight: 500; font-size: 11px; position: sticky; top: 0; }
+  .seq-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); font-family: var(--mono); }
+  .seq-table tr:hover td { background: var(--panel-hover); }
+  .seq-table tr.active td { background: var(--accent-glow); border-left: 3px solid var(--accent); }
+  .seq-table input { width: 70px; background: transparent; border: 1px solid var(--border); color: var(--text); padding: 3px 6px; border-radius: 4px; font-family: var(--mono); font-size: 12px; }
+  .seq-table input:focus { border-color: var(--accent); outline: none; }
+  .seq-table .act-btns { display: flex; gap: 4px; }
+  .seq-table .act-btns button { padding: 3px 7px; font-size: 11px; border-radius: 4px; }
+  .seq-progress { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+  .seq-progress-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 2px; transition: width 0.3s ease; }
+  .seq-status { font-size: 12px; color: var(--text-sec); display: flex; justify-content: space-between; align-items: center; }
+  .seq-status .step-info { font-family: var(--mono); color: var(--accent); }
+  .ramp-form { display: grid; grid-template-columns: repeat(3, 1fr) auto; gap: 10px; align-items: end; }
+  .ramp-form .control-group { min-width: 0; }
+
+  /* Charger */
+  .charger-state { display: flex; gap: 8px; align-items: center; font-size: 12px; }
+  .state-node { padding: 5px 12px; border-radius: 6px; background: var(--input-bg); border: 1px solid var(--border); color: var(--text-dim); font-size: 11px; font-weight: 500; }
+  .state-node.active { background: var(--warning-glow); border-color: var(--warning); color: var(--warning); }
+  .state-node.done { background: var(--positive-glow); border-color: var(--positive); color: var(--positive); }
+  .charger-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .charger-stat { background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; text-align: center; }
+  .charger-stat .k { font-size: 10px; color: var(--text-dim); text-transform: uppercase; }
+  .charger-stat .v { font-family: var(--mono); font-size: 18px; color: var(--text); margin-top: 4px; }
+
+  /* I-V Tracer */
+  .iv-results { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .iv-result { background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; text-align: center; }
+  .iv-result .k { font-size: 10px; color: var(--text-dim); text-transform: uppercase; }
+  .iv-result .v { font-family: var(--mono); font-size: 16px; color: var(--text); margin-top: 4px; }
+
+  /* Logger */
+  .logger-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .logger-stats { display: flex; gap: 16px; font-size: 11px; color: var(--text-sec); }
+  .logger-stats span { font-family: var(--mono); color: var(--text); }
+  .log-table-wrap { max-height: 280px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .log-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .log-table th { text-align: left; padding: 7px 10px; background: var(--input-bg); color: var(--text-sec); font-weight: 500; font-size: 10px; position: sticky; top: 0; text-transform: uppercase; letter-spacing: 0.5px; }
+  .log-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); font-family: var(--mono); }
+  .log-table tr:hover td { background: var(--panel-hover); }
+  .log-table .col-time { width: 90px; }
+  .log-table .col-v { width: 70px; color: var(--accent); }
+  .log-table .col-a { width: 70px; color: var(--warning); }
+  .log-table .col-p { width: 70px; color: var(--positive); }
+  .log-table .col-state { width: 60px; font-size: 10px; }
+
+  canvas.chart { width: 100%; height: 190px; border-radius: 8px; background: var(--input-bg); }
+  canvas.iv-chart { width: 100%; height: 220px; border-radius: 8px; background: var(--input-bg); }
+
+  .comm-log-area { background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-family: var(--mono); font-size: 11px; color: var(--text-sec); height: 120px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; }
+  .comm-log-area .ts { color: var(--text-dim); }
+  .comm-log-area .ok { color: var(--positive); }
+  .comm-log-area .err { color: var(--danger); }
+  .comm-log-area .cmd { color: var(--accent); }
+  .comm-log-area .info { color: var(--warning); }
+  .comm-log-area .sim { color: #a78bfa; }
+
+  .sidebar { display: flex; flex-direction: column; gap: 16px; }
+  .sidebar .panel { gap: 10px; }
+  .info-row { display: flex; justify-content: space-between; font-size: 12px; }
+  .info-row .k { color: var(--text-sec); }
+  .info-row .v { font-family: var(--mono); color: var(--text); }
+  .divider { height: 1px; background: var(--border); margin: 2px 0; }
+  .quick-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .quick-actions button { font-size: 11px; padding: 8px; }
+  .protection-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .prot-badge { padding: 6px; border-radius: 6px; font-size: 10px; text-align: center; background: var(--input-bg); border: 1px solid var(--border); color: var(--text-dim); font-weight: 500; }
+  .prot-badge.active { border-color: var(--danger); color: var(--danger); background: var(--danger-glow); }
+
+  .alarm-badge { display: none; padding: 6px 10px; border-radius: 6px; font-size: 12px; background: var(--danger-glow); border: 1px solid var(--danger); color: var(--danger); font-weight: 500; text-align: center; }
+  .alarm-badge.show { display: block; animation: pulse 0.8s infinite; }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: none; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(2px); }
+  .modal-overlay.show { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 22px; width: 460px; max-width: 92vw; }
+  .modal h3 { font-size: 15px; margin-bottom: 14px; font-weight: 500; }
+  .modal p { font-size: 12px; color: var(--text-sec); margin-bottom: 14px; line-height: 1.5; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+
+  .kbd-hint { font-size: 10px; color: var(--text-dim); font-family: var(--mono); background: var(--input-bg); padding: 1px 4px; border-radius: 3px; border: 1px solid var(--border); }
+
+  footer { padding: 10px 22px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-dim); text-align: center; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>HM310T Controller <span class="subtitle">0–30 V / 0–10 A — Full Featured</span></h1>
+  </div>
+  <div class="conn-bar">
+    <div class="status-pill" id="connPill"><span class="status-dot" id="connDot"></span><span id="connText">Disconnected</span></div>
+    <div class="status-pill" id="outPill"><span class="status-dot" id="outDot"></span><span id="outText">Output OFF</span></div>
+    <div class="status-pill" id="seqPill"><span class="status-dot" id="seqDot"></span><span id="seqText">Idle</span></div>
+    <div class="status-pill" id="logPill"><span class="status-dot" id="logDot"></span><span id="logText">Logger Idle</span></div>
+    <div class="status-pill" id="chargePill"><span class="status-dot" id="chargeDot"></span><span id="chargeText">Charger Idle</span></div>
+    <div class="status-pill" id="alarmPill" style="display:none;"><span class="status-dot alarm" id="alarmDot"></span><span id="alarmText">ALARM</span></div>
+    <button class="btn btn-toggle" id="btnSimToggle">Simulation: OFF</button>
+    <button class="btn btn-primary" id="btnConnect">Connect USB</button>
+    <button class="btn" id="btnDisconnect" disabled>Disconnect</button>
+  </div>
+</header>
+
+<main>
+  <div class="left-col">
+    <!-- Live Readouts -->
+    <div class="panel" id="readoutPanel">
+      <div class="panel-title">Live Readouts</div>
+      <div class="readout-grid six">
+        <div class="readout-card" id="cardV"><div class="readout-label">Voltage</div><div class="readout-value"><span id="dispV">0.000</span><span class="readout-unit">V</span></div><div class="readout-setpoint">Set: <span id="setV">0.000</span> V</div></div>
+        <div class="readout-card current" id="cardA"><div class="readout-label">Current</div><div class="readout-value"><span id="dispA">0.000</span><span class="readout-unit">A</span></div><div class="readout-setpoint">Set: <span id="setA">0.000</span> A</div></div>
+        <div class="readout-card power" id="cardP"><div class="readout-label">Power</div><div class="readout-value"><span id="dispW">0.0</span><span class="readout-unit">W</span></div><div class="readout-setpoint">Limit: <span id="setW">300</span> W</div></div>
+        <div class="readout-card resistance" id="cardR"><div class="readout-label">Resistance</div><div class="readout-value"><span id="dispR">—</span><span class="readout-unit">Ω</span></div><div class="readout-setpoint">R = V / I</div></div>
+        <div class="readout-card energy" id="cardE"><div class="readout-label">Energy</div><div class="readout-value"><span id="dispE">0.000</span><span class="readout-unit">Wh</span></div><div class="readout-setpoint">∫ P dt <button class="btn btn-sm" id="btnResetE" style="padding:2px 6px;font-size:10px;margin-left:4px;">Reset</button></div></div>
+        <div class="readout-card capacity" id="cardC"><div class="readout-label">Capacity</div><div class="readout-value"><span id="dispC">0.000</span><span class="readout-unit">Ah</span></div><div class="readout-setpoint">∫ I dt <button class="btn btn-sm" id="btnResetC" style="padding:2px 6px;font-size:10px;margin-left:4px;">Reset</button></div></div>
+      </div>
+    </div>
+
+    <!-- Output Control -->
+    <div class="panel">
+      <div class="output-section">
+        <div class="output-label">DC Output <span class="state" id="outStateLabel">OFF — safe</span></div>
+        <div class="toggle-switch" id="outToggle"></div>
+      </div>
+    </div>
+
+    <!-- Set Parameters -->
+    <div class="panel">
+      <div class="panel-title">Set Parameters</div>
+      <div class="control-row">
+        <div class="control-group">
+          <label>Voltage <span class="kbd-hint">↑↓</span></label>
+          <div class="input-wrap"><input type="number" id="inV" min="0" max="30" step="0.01" value="5.00"><span class="unit">V</span></div>
+          <div class="slider-wrap"><input type="range" id="sliderV" min="0" max="30" step="0.01" value="5"></div>
+        </div>
+        <div class="control-group">
+          <label>Current Limit</label>
+          <div class="input-wrap"><input type="number" id="inA" min="0" max="10" step="0.001" value="1.000"><span class="unit">A</span></div>
+          <div class="slider-wrap"><input type="range" id="sliderA" min="0" max="10" step="0.001" value="1"></div>
+        </div>
+        <button class="btn btn-primary" id="btnApply" style="height:40px;align-self:center;">Apply <span class="kbd-hint">Ctrl+Enter</span></button>
+      </div>
+    </div>
+
+    <!-- Quick Presets -->
+    <div class="panel">
+      <div class="panel-title">Quick Presets</div>
+      <div class="preset-grid" id="presetGrid">
+        <button class="preset-btn" data-v="3.3" data-a="1"><span class="v">3.3V</span><span class="a">1.0 A</span></button>
+        <button class="preset-btn" data-v="5.0" data-a="2"><span class="v">5.0V</span><span class="a">2.0 A</span></button>
+        <button class="preset-btn" data-v="9.0" data-a="3"><span class="v">9.0V</span><span class="a">3.0 A</span></button>
+        <button class="preset-btn" data-v="12.0" data-a="5"><span class="v">12.0V</span><span class="a">5.0 A</span></button>
+        <button class="preset-btn" data-v="15.0" data-a="5"><span class="v">15.0V</span><span class="a">5.0 A</span></button>
+        <button class="preset-btn" data-v="24.0" data-a="5"><span class="v">24.0V</span><span class="a">5.0 A</span></button>
+        <button class="preset-btn" data-v="5.0" data-a="0.5"><span class="v">5.0V</span><span class="a">0.5 A</span></button>
+        <button class="preset-btn" data-v="3.3" data-a="0.1"><span class="v">3.3V</span><span class="a">0.1 A</span></button>
+      </div>
+    </div>
+
+    <!-- Sequence Programmer -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>Sequence Programmer</span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm" id="btnImportSeqCSV">Import CSV</button>
+          <button class="btn btn-sm" id="btnImportSeq">Import JSON</button>
+          <button class="btn btn-sm" id="btnExportSeq">Export JSON</button>
+          <input type="file" id="fileImport" accept=".json" style="display:none">
+          <input type="file" id="fileImportCSV" accept=".csv,.txt" style="display:none">
+        </div>
+      </div>
+      <div style="background:var(--input-bg);border:1px solid var(--border);border-radius:8px;padding:12px;">
+        <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px;font-weight:500;">Ramp Generator</div>
+        <div class="ramp-form">
+          <div class="control-group"><label>Start V</label><div class="input-wrap"><input type="number" id="rampStart" min="0" max="30" step="0.01" value="0"><span class="unit">V</span></div></div>
+          <div class="control-group"><label>End V</label><div class="input-wrap"><input type="number" id="rampEnd" min="0" max="30" step="0.01" value="5"><span class="unit">V</span></div></div>
+          <div class="control-group"><label>Step</label><div class="input-wrap"><input type="number" id="rampStep" min="0.01" max="30" step="0.01" value="0.5"><span class="unit">V</span></div></div>
+          <div class="control-group"><label>Dwell</label><div class="input-wrap"><input type="number" id="rampDwell" min="0.1" max="3600" step="0.1" value="1.0"><span class="unit">s</span></div></div>
+          <div class="control-group"><label>Current</label><div class="input-wrap"><input type="number" id="rampCurr" min="0" max="10" step="0.001" value="1.0"><span class="unit">A</span></div></div>
+          <div class="control-group" style="min-width:80px;"><label>Loop</label><div class="input-wrap"><select id="rampLoop"><option value="1">Once</option><option value="2">2×</option><option value="3">3×</option><option value="5">5×</option><option value="10">10×</option><option value="0">∞</option></select></div></div>
+          <button class="btn btn-primary" id="btnGenRamp" style="height:36px;">Generate</button>
+        </div>
+      </div>
+      <div class="seq-toolbar">
+        <button class="btn btn-primary btn-icon" id="btnPlay" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Play <span class="kbd-hint">Ctrl+P</span></button>
+        <button class="btn btn-icon" id="btnPause" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg> Pause</button>
+        <button class="btn btn-danger btn-icon" id="btnStopSeq" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg> Stop</button>
+        <button class="btn btn-sm" id="btnAddStep">+ Add Step</button>
+        <button class="btn btn-sm" id="btnClearSeq">Clear All</button>
+        <div style="margin-left:auto;font-size:11px;color:var(--text-dim);"><span id="seqCount">0</span> steps</div>
+      </div>
+      <div class="seq-status"><span id="seqProgText">Ready</span><span class="step-info" id="seqStepInfo">—</span></div>
+      <div class="seq-progress"><div class="seq-progress-fill" id="seqProgBar"></div></div>
+      <div class="seq-table-wrap">
+        <table class="seq-table" id="seqTable">
+          <thead><tr><th>#</th><th>Voltage</th><th>Current</th><th>Dwell (s)</th><th>Actions</th></tr></thead>
+          <tbody id="seqTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Battery Charger -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>Battery Charger (CC / CV)</span>
+        <div class="charger-state">
+          <div class="state-node" id="stCC">CC</div>
+          <div class="state-node" id="stCV">CV</div>
+          <div class="state-node" id="stDone">Done</div>
+        </div>
+      </div>
+      <div class="control-row">
+        <div class="control-group" style="flex:0 0 160px;">
+          <label>Chemistry</label>
+          <div class="input-wrap"><select id="chChemistry">
+            <option value="liion" data-v="4.20" data-term="0.05">Li-ion (4.20V)</option>
+            <option value="lifepo4" data-v="3.60" data-term="0.05">LiFePO₄ (3.60V)</option>
+            <option value="nimh" data-v="1.45" data-term="0.10">NiMH (1.45V)</option>
+            <option value="nicd" data-v="1.45" data-term="0.10">NiCd (1.45V)</option>
+            <option value="lead" data-v="2.40" data-term="0.05">Lead Acid (2.40V)</option>
+            <option value="custom" data-v="4.20" data-term="0.05">Custom</option>
+          </select></div>
+        </div>
+        <div class="control-group" style="flex:0 0 80px;"><label>Cells</label><div class="input-wrap"><input type="number" id="chCells" min="1" max="7" step="1" value="1"></div></div>
+        <div class="control-group" style="flex:0 0 110px;"><label>Cell Vmax</label><div class="input-wrap"><input type="number" id="chCellV" min="0.5" max="30" step="0.01" value="4.20"><span class="unit">V</span></div></div>
+        <div class="control-group" style="flex:0 0 110px;"><label>Charge I</label><div class="input-wrap"><input type="number" id="chCurrent" min="0.01" max="10" step="0.001" value="1.0"><span class="unit">A</span></div></div>
+        <div class="control-group" style="flex:0 0 110px;"><label>Term I (C/x)</label><div class="input-wrap"><input type="number" id="chTerm" min="0.001" max="10" step="0.001" value="0.050"><span class="unit">A</span></div></div>
+        <div class="control-group" style="flex:0 0 110px;"><label>Timeout</label><div class="input-wrap"><input type="number" id="chTimeout" min="1" max="1440" step="1" value="240"><span class="unit">min</span></div></div>
+      </div>
+      <div class="charger-stats">
+        <div class="charger-stat"><div class="k">Target V</div><div class="v" id="chTargetV">4.20 V</div></div>
+        <div class="charger-stat"><div class="k">Elapsed</div><div class="v" id="chElapsed">0:00</div></div>
+        <div class="charger-stat"><div class="k">Capacity</div><div class="v" id="chCapacity">0 mAh</div></div>
+      </div>
+      <div class="seq-toolbar" style="margin-top:4px;">
+        <button class="btn btn-primary btn-icon" id="btnChargeStart" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Start Charge</button>
+        <button class="btn btn-danger btn-icon" id="btnChargeStop" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg> Stop Charge</button>
+        <div style="margin-left:auto;font-size:11px;color:var(--text-dim);" id="chStatusText">Configure and start</div>
+      </div>
+    </div>
+
+    <!-- I-V Curve Tracer -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>I-V Curve Tracer</span>
+        <div class="iv-results" style="flex:1;margin-left:12px;">
+          <div class="iv-result"><div class="k">Vf @ 1mA</div><div class="v" id="ivVf">—</div></div>
+          <div class="iv-result"><div class="k">Knee V</div><div class="v" id="ivKnee">—</div></div>
+          <div class="iv-result"><div class="k">R dyn</div><div class="v" id="ivRdyn">—</div></div>
+        </div>
+      </div>
+      <div class="control-row">
+        <div class="control-group" style="flex:0 0 110px;"><label>Start V</label><div class="input-wrap"><input type="number" id="ivStart" min="0" max="30" step="0.01" value="0"><span class="unit">V</span></div></div>
+        <div class="control-group" style="flex:0 0 110px;"><label>End V</label><div class="input-wrap"><input type="number" id="ivEnd" min="0" max="30" step="0.01" value="5"><span class="unit">V</span></div></div>
+        <div class="control-group" style="flex:0 0 110px;"><label>Step</label><div class="input-wrap"><input type="number" id="ivStep" min="0.01" max="30" step="0.01" value="0.1"><span class="unit">V</span></div></div>
+        <div class="control-group" style="flex:0 0 110px;"><label>Current Lim</label><div class="input-wrap"><input type="number" id="ivCurr" min="0.001" max="10" step="0.001" value="1"><span class="unit">A</span></div></div>
+        <div class="control-group" style="flex:0 0 110px;"><label>Dwell</label><div class="input-wrap"><input type="number" id="ivDwell" min="0.05" max="10" step="0.05" value="0.2"><span class="unit">s</span></div></div>
+        <button class="btn btn-primary" id="btnIVRun" style="height:36px;" disabled>Run Sweep</button>
+        <button class="btn btn-sm" id="btnIVClear">Clear</button>
+      </div>
+      <canvas class="iv-chart" id="ivChart"></canvas>
+    </div>
+
+    <!-- Data Logger -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>Data Logger</span>
+        <div class="logger-stats">
+          <div>Points: <span id="logCount">0</span></div>
+          <div>Duration: <span id="logDuration">0s</span></div>
+          <div>Rate: <span id="logRate">—</span></div>
+        </div>
+      </div>
+      <div class="logger-toolbar">
+        <button class="btn btn-primary btn-icon" id="btnLogStart" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg> Start <span class="kbd-hint">Ctrl+S</span></button>
+        <button class="btn btn-icon" id="btnLogPause" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg> Pause</button>
+        <button class="btn btn-danger btn-icon" id="btnLogStop" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg> Stop</button>
+        <div style="margin-left:auto;display:flex;gap:6px;">
+          <button class="btn btn-sm" id="btnExportCSV">Export CSV</button>
+          <button class="btn btn-sm" id="btnExportLogJSON">Export JSON</button>
+          <button class="btn btn-sm" id="btnClearLogData">Clear Data</button>
+        </div>
+      </div>
+      <div class="control-row" style="gap:10px;">
+        <div class="control-group" style="flex:0 0 140px;"><label>Log Interval (ms)</label><div class="input-wrap"><input type="number" id="logInterval" min="100" max="30000" step="100" value="1000"></div></div>
+        <div class="control-group" style="flex:0 0 140px;"><label>Max Points</label><div class="input-wrap"><input type="number" id="logMaxPoints" min="100" max="100000" step="100" value="10000"></div></div>
+        <div class="control-group" style="flex:0 0 180px;"><label>Filename Prefix</label><div class="input-wrap"><input type="text" id="logPrefix" value="hm310t_log" style="font-family:var(--font);"></div></div>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin-bottom:4px;"><input type="checkbox" id="logAutoStart" style="accent-color:var(--accent);"> Auto-start on connect</label>
+      </div>
+      <div class="log-table-wrap">
+        <table class="log-table" id="logTable">
+          <thead><tr><th class="col-time">Time</th><th class="col-v">Voltage (V)</th><th class="col-a">Current (A)</th><th class="col-p">Power (W)</th><th class="col-state">Output</th><th class="col-state">Seq Step</th><th class="col-state">Chg State</th></tr></thead>
+          <tbody id="logTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="panel">
+      <div class="panel-title">Voltage / Current Trend</div>
+      <canvas class="chart" id="chartCanvas"></canvas>
+    </div>
+
+    <!-- Comm Log -->
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="panel-title">Communication Log</div>
+        <button class="btn btn-sm" style="padding:3px 10px;" id="btnClearCommLog">Clear</button>
+      </div>
+      <div class="comm-log-area" id="commLogArea"></div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <!-- Device Info -->
+    <div class="panel">
+      <div class="panel-title">Device Info</div>
+      <div class="info-row"><span class="k">Model</span><span class="v">HM310T</span></div>
+      <div class="divider"></div>
+      <div class="info-row"><span class="k">Range</span><span class="v">0–30 V / 0–10 A</span></div>
+      <div class="info-row"><span class="k">Max Power</span><span class="v">300 W</span></div>
+      <div class="divider"></div>
+      <div class="info-row"><span class="k">Protocol</span><span class="v">Modbus RTU</span></div>
+      <div class="info-row"><span class="k">Baud Rate</span><span class="v">9600</span></div>
+      <div class="info-row"><span class="k">Slave Addr</span><span class="v">1</span></div>
+      <div class="info-row"><span class="k">Data</span><span class="v">8-N-1</span></div>
+    </div>
+
+    <!-- Protection -->
+    <div class="panel">
+      <div class="panel-title">Protection Status</div>
+      <div class="protection-grid">
+        <div class="prot-badge" id="protOVP">OVP</div><div class="prot-badge" id="protOCP">OCP</div><div class="prot-badge" id="protOPP">OPP</div>
+        <div class="prot-badge" id="protOTP">OTP</div><div class="prot-badge" id="protSCP">SCP</div><div class="prot-badge" id="protFan">FAN</div>
+      </div>
+    </div>
+
+    <!-- Protection Settings -->
+    <div class="panel">
+      <div class="panel-title">Protection Settings</div>
+      <div class="control-group"><label>OVP Threshold</label><div class="input-wrap"><input type="number" id="setOVP" min="0.1" max="30" step="0.01" value="30"><span class="unit">V</span></div></div>
+      <div class="control-group" style="margin-top:6px;"><label>OCP Threshold</label><div class="input-wrap"><input type="number" id="setOCP" min="0.01" max="10" step="0.001" value="10"><span class="unit">A</span></div></div>
+      <div class="control-group" style="margin-top:6px;"><label>OPP Threshold</label><div class="input-wrap"><input type="number" id="setOPP" min="1" max="300" step="0.1" value="300"><span class="unit">W</span></div></div>
+      <div class="quick-actions" style="margin-top:8px;"><button class="btn btn-primary" id="btnApplyProt">Apply</button><button class="btn" id="btnReadProt">Read</button></div>
+    </div>
+
+    <!-- Alarm Thresholds -->
+    <div class="panel">
+      <div class="panel-title">Alarm Thresholds</div>
+      <div class="alarm-badge" id="alarmBanner">OUT OF BOUNDS</div>
+      <div style="margin-bottom:8px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;"><input type="checkbox" id="alarmEnable" checked style="accent-color:var(--accent);"> Enable alarms</label></div>
+      <div class="control-row" style="gap:8px;">
+        <div class="control-group" style="min-width:0;"><label>V Min</label><div class="input-wrap"><input type="number" id="alarmVmin" min="0" max="30" step="0.01" value="0"><span class="unit">V</span></div></div>
+        <div class="control-group" style="min-width:0;"><label>V Max</label><div class="input-wrap"><input type="number" id="alarmVmax" min="0" max="30" step="0.01" value="30"><span class="unit">V</span></div></div>
+      </div>
+      <div class="control-row" style="gap:8px;margin-top:6px;">
+        <div class="control-group" style="min-width:0;"><label>A Min</label><div class="input-wrap"><input type="number" id="alarmAmin" min="0" max="10" step="0.001" value="0"><span class="unit">A</span></div></div>
+        <div class="control-group" style="min-width:0;"><label>A Max</label><div class="input-wrap"><input type="number" id="alarmAmax" min="0" max="10" step="0.001" value="10"><span class="unit">A</span></div></div>
+      </div>
+      <div style="margin-top:8px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;"><input type="checkbox" id="alarmKill" style="accent-color:var(--accent);"> Kill output on alarm</label></div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="panel">
+      <div class="panel-title">Quick Actions</div>
+      <div class="quick-actions">
+        <button class="btn" id="btnRead">Refresh</button>
+        <button class="btn" id="btnZero">Zero Output</button>
+        <button class="btn btn-danger" id="btnKill">Kill Output <span class="kbd-hint">Ctrl+K</span></button>
+        <button class="btn" id="btnSavePreset">Save Preset</button>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="panel">
+      <div class="panel-title">Settings</div>
+      <div class="control-group"><label>Poll Interval (ms)</label><div class="input-wrap"><input type="number" id="pollMs" min="100" max="5000" step="100" value="500"></div></div>
+      <div class="control-group" style="margin-top:8px;"><label>Chart History</label><div class="input-wrap"><input type="number" id="chartPoints" min="50" max="1000" step="50" value="300"></div></div>
+      <div class="control-group" style="margin-top:8px;"><label>Inter-step Delay (ms)</label><div class="input-wrap"><input type="number" id="stepDelay" min="50" max="2000" step="50" value="200"></div></div>
+      <div class="control-group" style="margin-top:8px;"><label>Sim Load Resistance</label><div class="input-wrap"><input type="number" id="simLoadR" min="0.1" max="1000" step="0.1" value="10"><span class="unit">Ω</span></div></div>
+      <div style="margin-top:10px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;"><input type="checkbox" id="autoPoll" checked style="accent-color:var(--accent);">Auto-poll live data</label></div>
+      <div style="margin-top:8px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;"><input type="checkbox" id="autoScaleChart" checked style="accent-color:var(--accent);">Auto-scale chart</label></div>
+      <div class="quick-actions" style="margin-top:10px;">
+        <button class="btn btn-sm" id="btnSaveSettings">Save Settings</button>
+        <button class="btn btn-sm" id="btnLoadSettings">Load Settings</button>
+        <button class="btn btn-sm btn-danger" id="btnResetSettings">Reset All</button>
+      </div>
+    </div>
+
+    <!-- Saved Presets -->
+    <div class="panel">
+      <div class="panel-title">Saved Presets</div>
+      <div id="savedPresets" style="display:flex;flex-direction:column;gap:5px;"></div>
+    </div>
+  </div>
+</main>
+
+<footer>HM310T Browser Controller — Web Serial API (Chrome/Edge) — Modbus RTU — Logger — Charger — I-V Tracer — Simulation</footer>
+
+<!-- Connection Modal -->
+<div class="modal-overlay" id="connModal">
+  <div class="modal">
+    <h3>Connect to HM310T</h3>
+    <p>Click "Select Port" to choose your HM310T USB serial device. The supply uses an FTDI USB-to-serial bridge at 9600 baud.</p>
+    <div class="modal-actions">
+      <button class="btn" id="btnCancelConn">Cancel</button>
+      <button class="btn btn-primary" id="btnSelectPort">Select Port</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   HM310T Controller — Full Featured
+   ============================================================ */
+
+// --- CRC-16 (Modbus) ---
+const CRC_TABLE = new Uint16Array(256);
+for (let i = 0; i < 256; i++) { let crc = i; for (let j = 0; j < 8; j++) crc = (crc & 1) ? (0xA001 ^ (crc >>> 1)) : (crc >>> 1); CRC_TABLE[i] = crc; }
+function crc16(buf) { let crc = 0xFFFF; for (let b of buf) crc = CRC_TABLE[(crc ^ b) & 0xFF] ^ (crc >>> 8); return [(crc & 0xFF), (crc >>> 8)]; }
+
+function buildFrame(slave, fn, addr, valOrQty) {
+  const frame = new Uint8Array([slave, fn, (addr >>> 8), (addr & 0xFF), (valOrQty >>> 8), (valOrQty & 0xFF)]);
+  const crc = crc16(frame); const out = new Uint8Array(frame.length + 2); out.set(frame); out.set(crc, frame.length); return out;
+}
+function buildWriteMultiple(slave, addr, vals) {
+  const bytes = vals.length * 2;
+  const frame = new Uint8Array(7 + bytes);
+  frame[0] = slave; frame[1] = 0x10; frame[2] = (addr >>> 8); frame[3] = (addr & 0xFF);
+  frame[4] = 0; frame[5] = vals.length; frame[6] = bytes;
+  for (let i = 0; i < vals.length; i++) { frame[7 + i*2] = (vals[i] >>> 8); frame[8 + i*2] = (vals[i] & 0xFF); }
+  const crc = crc16(frame.slice(0, 7 + bytes)); const out = new Uint8Array(frame.length + 2); out.set(frame); out.set(crc, frame.length); return out;
+}
+
+const REG = {
+  VOLTAGE_SET: 0x0000, CURRENT_SET: 0x0002, OUTPUT_ENABLE: 0x0006,
+  OVP_SET: 0x0008, OCP_SET: 0x000A, OPP_SET: 0x000C,
+  VOLTAGE_DISPLAY: 0x0010, CURRENT_DISPLAY: 0x0012, POWER_DISPLAY: 0x0014,
+  PROTECT_STATUS: 0x0020,
+};
+
+// --- State ---
+let port = null, reader = null, writer = null, readBuffer = new Uint8Array(0);
+let connected = false, outputOn = false, polling = false, pollTimer = null;
+let chartData = { v: [], a: [], t: [] }, maxChartPts = 300;
+let pendingPromise = null;
+let sequence = [], seqRunning = false, seqPaused = false, seqIndex = 0, seqLoop = 1, seqLoopCount = 0, seqTimer = null;
+let logData = [], logRunning = false, logPaused = false, logTimer = null, logStartTime = 0;
+let lastReadV = 0, lastReadA = 0, lastReadP = 0;
+let simMode = false, simV = 0, simA = 0, simSetV = 0, simSetA = 0, simOutput = false, simLoadR = 10, simTimer = null;
+let chargeRunning = false, chargeState = 'idle', chargeTimer = null, chargeStartTime = 0, chargeAh = 0;
+let chargeTargetV = 0, chargeCurrent = 0, chargeTermI = 0, chargeTimeoutMin = 240;
+let energyWh = 0, capacityAh = 0, lastMathTime = 0;
+let ivData = [], ivRunning = false;
+let alarmActive = false;
+
+const $ = id => document.getElementById(id);
+const commLogEl = $('commLogArea');
+function commLog(msg, cls='') {
+  const ts = new Date().toLocaleTimeString('en-GB', {hour12:false});
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="ts">[${ts}]</span> <span class="${cls}">${msg}</span>`;
+  commLogEl.appendChild(line); commLogEl.scrollTop = commLogEl.scrollHeight;
+}
+
+// ==================== SIMULATION MODE ====================
+function setSimMode(on) {
+  simMode = on;
+  $('btnSimToggle').classList.toggle('active', on);
+  $('btnSimToggle').textContent = on ? 'Simulation: ON' : 'Simulation: OFF';
+  if (on) {
+    if (!connected) { connected = true; updateConnUI(true); }
+    startSimLoop();
+    commLog('Simulation mode enabled', 'sim');
+  } else {
+    stopSimLoop();
+    if (!port) { connected = false; updateConnUI(false); }
+    commLog('Simulation mode disabled', 'sim');
+  }
+  updateAllButtons();
+}
+function startSimLoop() {
+  if (simTimer) clearInterval(simTimer);
+  simTimer = setInterval(simTick, 100);
+}
+function stopSimLoop() {
+  if (simTimer) { clearInterval(simTimer); simTimer = null; }
+}
+function simTick() {
+  const dt = 0.1;
+  const slewV = 2.0 * dt;
+  const noiseV = (Math.random() - 0.5) * 0.002;
+  const noiseA = (Math.random() - 0.5) * 0.001;
+  if (simOutput) {
+    if (simV < simSetV) simV = Math.min(simSetV, simV + slewV);
+    else if (simV > simSetV) simV = Math.max(simSetV, simV - slewV);
+    let iLoad = simV / simLoadR;
+    if (iLoad > simSetA) { simV = Math.min(simV, simSetA * simLoadR); iLoad = simSetA; }
+    simA = Math.max(0, iLoad + noiseA);
+    simV = Math.max(0, simV + noiseV);
+  } else { simV = Math.max(0, simV - slewV * 2); simA = 0; }
+  simV = Math.max(0, Math.min(30, simV)); simA = Math.max(0, Math.min(10, simA));
+  $('dispV').textContent = simV.toFixed(3); $('dispA').textContent = simA.toFixed(3); $('dispW').textContent = (simV * simA).toFixed(1);
+  lastReadV = simV; lastReadA = simA; lastReadP = simV * simA;
+  updateMathChannels();
+  checkAlarms();
+  const now = Date.now(); chartData.v.push(simV); chartData.a.push(simA); chartData.t.push(now);
+  if (chartData.v.length > maxChartPts) { chartData.v.shift(); chartData.a.shift(); chartData.t.shift(); }
+  drawChart();
+  if (logRunning && !logPaused) {
+    const point = { t: now, v: simV, a: simA, p: simV*simA, out: simOutput, seqStep: seqRunning ? seqIndex : null, chgState: chargeState };
+    logData.push(point);
+    const maxPts = parseInt($('logMaxPoints').value) || 10000;
+    if (logData.length > maxPts) logData.shift();
+    appendLogRow(point);
+    updateLogUI();
+  }
+}
+function simSendFrame(frame) {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      const slave = frame[0], fn = frame[1], addr = (frame[2]<<8)|frame[3], val = (frame[4]<<8)|frame[5];
+      if (fn === 0x06) {
+        if (addr === REG.OUTPUT_ENABLE) { simOutput = !!val; updateOutputUI(simOutput); }
+        else if (addr === REG.VOLTAGE_SET) { simSetV = val/100; $('setV').textContent = simSetV.toFixed(3); }
+        else if (addr === REG.CURRENT_SET) { simSetA = val/1000; $('setA').textContent = simSetA.toFixed(3); }
+      } else if (fn === 0x10) {
+        if (addr === REG.VOLTAGE_SET) { const lo=val, hi=(frame[7]<<8)|frame[8]; simSetV = ((hi<<16)|lo)/100; $('setV').textContent = simSetV.toFixed(3); }
+        else if (addr === REG.CURRENT_SET) { const lo=val, hi=(frame[7]<<8)|frame[8]; simSetA = ((hi<<16)|lo)/1000; $('setA').textContent = simSetA.toFixed(3); }
+      }
+      const resp = new Uint8Array(frame.slice(0, frame.length-2));
+      const crc = crc16(resp); const out = new Uint8Array(resp.length+2); out.set(resp); out.set(crc, resp.length);
+      resolve(out);
+    }, 20 + Math.random()*30);
+  });
+}
+function simReadInput(addr, count) {
+  const data = [];
+  if (addr === REG.VOLTAGE_DISPLAY) { const raw = Math.round(simV*100); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
+  else if (addr === REG.CURRENT_DISPLAY) { const raw = Math.round(simA*1000); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
+  else if (addr === REG.POWER_DISPLAY) { const raw = Math.round(simV*simA*100); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
+  else if (addr === REG.PROTECT_STATUS) { data.push(0); }
+  else if (addr === REG.OUTPUT_ENABLE) { data.push(simOutput?1:0); }
+  const bytes = data.length*2;
+  const resp = new Uint8Array([1, 0x04, bytes]);
+  const full = new Uint8Array(resp.length + bytes + 2);
+  full.set(resp);
+  for (let i=0;i<data.length;i++) { full[3+i*2] = (data[i]>>>8); full[4+i*2] = (data[i]&0xFF); }
+  const crc = crc16(full.slice(0, full.length-2));
+  full.set(crc, full.length-2);
+  return full;
+}
+function simReadHolding(addr, count) {
+  const data = [];
+  if (addr === REG.VOLTAGE_SET) { const raw = Math.round(simSetV*100); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
+  else if (addr === REG.CURRENT_SET) { const raw = Math.round(simSetA*1000); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
+  else if (addr === REG.OUTPUT_ENABLE) { data.push(simOutput?1:0); }
+  else if (addr === REG.OVP_SET) { const raw = Math.round((parseFloat($('setOVP').value)||30)*100); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
+  else if (addr === REG.OCP_SET) { const raw = Math.round((parseFloat($('setOCP').value)||10)*1000); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
+  else if (addr === REG.OPP_SET) { const raw = Math.round((parseFloat($('setOPP').value)||300)*100); data.push(raw&0xFFFF, (raw>>>16)&0xFFFF); }
+  else if (addr === REG.PROTECT_STATUS) { data.push(0); }
+  const bytes = data.length*2;
+  const resp = new Uint8Array([1, 0x03, bytes]);
+  const full = new Uint8Array(resp.length + bytes + 2);
+  full.set(resp);
+  for (let i=0;i<data.length;i++) { full[3+i*2] = (data[i]>>>8); full[4+i*2] = (data[i]&0xFF); }
+  const crc = crc16(full.slice(0, full.length-2));
+  full.set(crc, full.length-2);
+  return full;
+}
+
+// --- Serial I/O ---
+async function openPort() {
+  if (simMode) { commLog('Already in simulation mode', 'sim'); return true; }
+  if (!('serial' in navigator)) { alert('Web Serial API not supported. Use Chrome or Edge.'); return false; }
+  try {
+    port = await navigator.serial.requestPort({ filters: [] });
+    await port.open({ baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none' });
+    writer = port.writable.getWriter(); reader = port.readable.getReader();
+    connected = true; updateConnUI(true); commLog('Port opened at 9600 baud', 'ok');
+    startReadLoop(); startPolling(); if ($('logAutoStart').checked) startLogger();
+    return true;
+  } catch (e) { commLog('Open failed: ' + e.message, 'err'); return false; }
+}
+async function closePort() {
+  if (simMode) { setSimMode(false); return; }
+  polling = false; clearTimeout(pollTimer); stopSequence(); stopLogger(); stopCharger(); stopIV();
+  try { if (reader) { await reader.cancel(); reader.releaseLock(); } } catch(e){}
+  try { if (writer) { writer.releaseLock(); } } catch(e){}
+  try { if (port) await port.close(); } catch(e){}
+  port = null; reader = null; writer = null; connected = false; updateConnUI(false); commLog('Disconnected', 'err');
+}
+async function startReadLoop() {
+  readBuffer = new Uint8Array(0);
+  while (connected && reader && !simMode) {
+    try {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) { const merged = new Uint8Array(readBuffer.length + value.length); merged.set(readBuffer); merged.set(value, readBuffer.length); readBuffer = merged; processFrames(); }
+    } catch (e) { if (connected && !simMode) commLog('Read error: ' + e.message, 'err'); break; }
+  }
+}
+function processFrames() {
+  while (readBuffer.length >= 5) {
+    let found = false;
+    for (let len = 5; len <= readBuffer.length && len <= 256; len++) {
+      const payload = readBuffer.slice(0, len - 2); const crcBytes = readBuffer.slice(len - 2, len); const calc = crc16(payload);
+      if (calc[0] === crcBytes[0] && calc[1] === crcBytes[1]) { handleFrame(readBuffer.slice(0, len)); readBuffer = readBuffer.slice(len); found = true; break; }
+    }
+    if (!found) readBuffer = readBuffer.slice(1);
+  }
+}
+function handleFrame(frame) {
+  if (frame.length < 5) return;
+  const slave = frame[0], fn = frame[1];
+  if (slave !== 1) return;
+  if (fn & 0x80) { const exc = frame[2]; commLog('Modbus exception 0x' + exc.toString(16), 'err'); if (pendingPromise) { pendingPromise.reject(new Error('Exc 0x'+exc.toString(16))); pendingPromise = null; } return; }
+  if (pendingPromise) { pendingPromise.resolve(frame); pendingPromise = null; }
+}
+async function sendFrame(frame, timeout=600) {
+  if (simMode) {
+    const resp = await simSendFrame(frame);
+    commLog('→ ' + Array.from(frame).map(b=>b.toString(16).padStart(2,'0')).join(' ') + ' [SIM]', 'sim');
+    return resp;
+  }
+  if (!writer) throw new Error('Not connected');
+  await writer.write(frame);
+  commLog('→ ' + Array.from(frame).map(b=>b.toString(16).padStart(2,'0')).join(' '), 'cmd');
+  return new Promise((resolve, reject) => {
+    pendingPromise = { resolve, reject };
+    setTimeout(() => { if (pendingPromise === { resolve, reject }) { pendingPromise = null; reject(new Error('Timeout')); } }, timeout);
+  });
+}
+
+// --- Modbus helpers ---
+async function readHoldingRegs(addr, count) { if (simMode) return simReadHolding(addr, count); const f = buildFrame(1,0x03,addr,count); const r = await sendFrame(f); const bytes=r[2]; const d=[]; for(let i=0;i<bytes/2;i++) d.push((r[3+i*2]<<8)|r[4+i*2]); return d; }
+async function readInputRegs(addr, count) { if (simMode) return simReadInput(addr, count); const f = buildFrame(1,0x04,addr,count); const r = await sendFrame(f); const bytes=r[2]; const d=[]; for(let i=0;i<bytes/2;i++) d.push((r[3+i*2]<<8)|r[4+i*2]); return d; }
+async function writeHoldingReg(addr, val) { return sendFrame(buildFrame(1,0x06,addr,val)); }
+async function writeMultipleRegs(addr, vals) { return sendFrame(buildWriteMultiple(1,addr,vals)); }
+async function writeCoil(addr, on) { return sendFrame(buildFrame(1,0x05,addr,on?0xFF00:0x0000)); }
+
+function decodeU32(lo, hi) { return (hi << 16) | lo; }
+function encodeU32(v) { return [v & 0xFFFF, (v>>>16)&0xFFFF]; }
+
+// --- UI ---
+function updateConnUI(on) { $('connDot').classList.toggle('connected', on); $('connText').textContent = on ? (simMode ? 'Simulated' : 'Connected') : 'Disconnected'; $('btnConnect').disabled = on && !simMode; $('btnDisconnect').disabled = !on; $('outToggle').style.pointerEvents = on ? '' : 'none'; $('outToggle').style.opacity = on ? '' : '0.4'; }
+function updateOutputUI(on) { outputOn = on; $('outDot').classList.toggle('on', on); $('outText').textContent = on ? 'Output ON' : 'Output OFF'; $('outToggle').classList.toggle('on', on); $('outStateLabel').textContent = on ? 'ON — live' : 'OFF — safe'; $('outStateLabel').style.color = on ? 'var(--warning)' : ''; }
+function updateSeqUI() { const running = seqRunning && !seqPaused; $('seqDot').className = 'status-dot' + (seqRunning ? (seqPaused ? '' : ' running') : ''); $('seqText').textContent = seqRunning ? (seqPaused ? 'Paused' : 'Running') : 'Idle'; }
+function updateSeqButtons() { const hasSteps = sequence.length > 0; $('btnPlay').disabled = !connected || !hasSteps || (seqRunning && !seqPaused); $('btnPause').disabled = !connected || !seqRunning; $('btnStopSeq').disabled = !seqRunning; }
+function updateLogUI() {
+  $('logDot').className = 'status-dot' + (logRunning ? (logPaused ? '' : ' logging') : '');
+  $('logText').textContent = logRunning ? (logPaused ? 'Logger Paused' : 'Logging') : 'Logger Idle';
+  $('logCount').textContent = logData.length.toLocaleString();
+  const dur = logData.length > 0 ? ((logData[logData.length-1].t - logData[0].t) / 1000).toFixed(1) : '0';
+  $('logDuration').textContent = dur + 's';
+  const rate = logData.length > 1 ? (logData.length / (Math.max(1, logData[logData.length-1].t - logData[0].t) / 1000)).toFixed(1) : '—';
+  $('logRate').textContent = rate + '/s';
+}
+function updateLogButtons() { $('btnLogStart').disabled = !connected || (logRunning && !logPaused); $('btnLogPause').disabled = !connected || !logRunning; $('btnLogStop').disabled = !logRunning; }
+function updateChargerUI() {
+  $('chargeDot').className = 'status-dot' + (chargeRunning ? ' charging' : '');
+  $('chargeText').textContent = chargeRunning ? `Charging (${chargeState.toUpperCase()})` : 'Charger Idle';
+  $('stCC').classList.toggle('active', chargeState === 'cc');
+  $('stCV').classList.toggle('active', chargeState === 'cv');
+  $('stDone').classList.toggle('done', chargeState === 'done');
+  $('btnChargeStart').disabled = !connected || chargeRunning;
+  $('btnChargeStop').disabled = !chargeRunning;
+}
+function updateAllButtons() { updateSeqButtons(); updateLogButtons(); $('btnChargeStart').disabled = !connected || chargeRunning; $('btnChargeStop').disabled = !chargeRunning; $('btnIVRun').disabled = !connected || ivRunning; }
+
+// --- Commands ---
+async function cmdSetVoltage(v) { const raw = Math.round(v*100); await writeMultipleRegs(REG.VOLTAGE_SET, encodeU32(raw)); commLog(`Set voltage ${v.toFixed(2)} V`, 'ok'); $('setV').textContent = v.toFixed(3); if (simMode) simSetV = v; }
+async function cmdSetCurrent(a) { const raw = Math.round(a*1000); await writeMultipleRegs(REG.CURRENT_SET, encodeU32(raw)); commLog(`Set current ${a.toFixed(3)} A`, 'ok'); $('setA').textContent = a.toFixed(3); if (simMode) simSetA = a; }
+async function cmdSetOutput(on) { await writeHoldingReg(REG.OUTPUT_ENABLE, on?1:0); updateOutputUI(on); commLog(`Output ${on?'ON':'OFF'}`, on?'ok':'err'); if (simMode) simOutput = on; }
+
+async function cmdReadAll() {
+  if (simMode) return { v: simV, a: simA, p: simV*simA, out: simOutput };
+  try {
+    const [vDisp, aDisp, pDisp, vSet, aSet, prot, out] = await Promise.all([
+      readInputRegs(REG.VOLTAGE_DISPLAY,2), readInputRegs(REG.CURRENT_DISPLAY,2), readInputRegs(REG.POWER_DISPLAY,2),
+      readHoldingRegs(REG.VOLTAGE_SET,2), readHoldingRegs(REG.CURRENT_SET,2), readHoldingRegs(REG.PROTECT_STATUS,1), readHoldingRegs(REG.OUTPUT_ENABLE,1)
+    ]);
+    const v = decodeU32(vDisp[0],vDisp[1])/100, a = decodeU32(aDisp[0],aDisp[1])/1000, p = decodeU32(pDisp[0],pDisp[1])/100;
+    const vs = decodeU32(vSet[0],vSet[1])/100, as = decodeU32(aSet[0],aSet[1])/1000;
+    $('dispV').textContent = v.toFixed(3); $('dispA').textContent = a.toFixed(3); $('dispW').textContent = p.toFixed(1);
+    $('setV').textContent = vs.toFixed(3); $('setA').textContent = as.toFixed(3);
+    updateOutputUI(!!out[0]);
+    const ps = prot[0]||0;
+    $('protOVP').classList.toggle('active', !!(ps&0x01)); $('protOCP').classList.toggle('active', !!(ps&0x02)); $('protOPP').classList.toggle('active', !!(ps&0x04));
+    $('protOTP').classList.toggle('active', !!(ps&0x08)); $('protSCP').classList.toggle('active', !!(ps&0x10)); $('protFan').classList.toggle('active', !!(ps&0x20));
+    lastReadV = v; lastReadA = a; lastReadP = p;
+    updateMathChannels();
+    checkAlarms();
+    const now = Date.now(); chartData.v.push(v); chartData.a.push(a); chartData.t.push(now);
+    if (chartData.v.length > maxChartPts) { chartData.v.shift(); chartData.a.shift(); chartData.t.shift(); }
+    drawChart();
+    return { v, a, p, out: !!out[0] };
+  } catch (e) { commLog('Read error: ' + e.message, 'err'); return null; }
+}
+
+// ==================== MATH CHANNELS ====================
+function updateMathChannels() {
+  const now = Date.now();
+  const v = lastReadV, a = lastReadA, p = lastReadP;
+  // Resistance
+  if (a > 0.0001) { $('dispR').textContent = (v / a).toFixed(2); }
+  else { $('dispR').textContent = '—'; }
+  // Energy & Capacity (integrate over time)
+  if (lastMathTime > 0 && outputOn) {
+    const dtHours = (now - lastMathTime) / 3600000;
+    energyWh += p * dtHours;
+    capacityAh += a * dtHours;
+  }
+  lastMathTime = now;
+  $('dispE').textContent = energyWh.toFixed(3);
+  $('dispC').textContent = capacityAh.toFixed(3);
+}
+function resetMathChannels() { energyWh = 0; capacityAh = 0; lastMathTime = 0; $('dispE').textContent = '0.000'; $('dispC').textContent = '0.000'; commLog('Math channels reset', 'info'); }
+
+// ==================== ALARM THRESHOLDS ====================
+function checkAlarms() {
+  if (!$('alarmEnable').checked) { clearAlarm(); return; }
+  const v = lastReadV, a = lastReadA;
+  const vmin = parseFloat($('alarmVmin').value) || 0;
+  const vmax = parseFloat($('alarmVmax').value) || 30;
+  const amin = parseFloat($('alarmAmin').value) || 0;
+  const amax = parseFloat($('alarmAmax').value) || 10;
+  let alarm = false, reason = '';
+  if (v < vmin) { alarm = true; reason = `V=${v.toFixed(2)}V < ${vmin}V`; }
+  else if (v > vmax) { alarm = true; reason = `V=${v.toFixed(2)}V > ${vmax}V`; }
+  else if (a < amin) { alarm = true; reason = `I=${a.toFixed(3)}A < ${amin}A`; }
+  else if (a > amax) { alarm = true; reason = `I=${a.toFixed(3)}A > ${amax}A`; }
+
+  if (alarm) {
+    if (!alarmActive) {
+      alarmActive = true;
+      $('alarmPill').style.display = 'flex';
+      $('alarmBanner').classList.add('show');
+      $('readoutPanel').classList.add('alarm');
+      commLog(`ALARM: ${reason}`, 'err');
+      if ($('alarmKill').checked && outputOn) { cmdSetOutput(false); commLog('Auto-killed output on alarm', 'err'); }
+    }
+  } else {
+    clearAlarm();
+  }
+}
+function clearAlarm() {
+  if (!alarmActive) return;
+  alarmActive = false;
+  $('alarmPill').style.display = 'none';
+  $('alarmBanner').classList.remove('show');
+  $('readoutPanel').classList.remove('alarm');
+}
+
+// --- Chart ---
+const ctx = $('chartCanvas').getContext('2d');
+function drawChart() {
+  const c = $('chartCanvas'), dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight; c.width = w*dpr; c.height = h*dpr; ctx.scale(dpr,dpr); ctx.clearRect(0,0,w,h);
+  if (chartData.v.length < 2) return;
+
+  let minV = 0, maxV = 30, minA = 0, maxA = 10;
+  if ($('autoScaleChart').checked) {
+    minV = Math.min(...chartData.v); maxV = Math.max(...chartData.v);
+    minA = Math.min(...chartData.a); maxA = Math.max(...chartData.a);
+    const padV = (maxV - minV) * 0.1 || 0.5;
+    const padA = (maxA - minA) * 0.1 || 0.1;
+    minV = Math.max(0, minV - padV); maxV = maxV + padV;
+    minA = Math.max(0, minA - padA); maxA = maxA + padA;
+    if (maxV === minV) { maxV = minV + 1; }
+    if (maxA === minA) { maxA = minA + 0.1; }
+  }
+
+  // Grid
+  ctx.strokeStyle = '#2a2f38'; ctx.lineWidth = 1;
+  for (let i = 1; i < 5; i++) { const y = (h/5)*i; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+
+  // Voltage line
+  ctx.strokeStyle = '#4ecdc4'; ctx.lineWidth = 2; ctx.beginPath();
+  for (let i = 0; i < chartData.v.length; i++) { const x = (i/(chartData.v.length-1))*w; const y = h - ((chartData.v[i]-minV)/(maxV-minV))*h*0.9 - h*0.05; if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+  ctx.stroke();
+  // Current line
+  ctx.strokeStyle = '#ffd43b'; ctx.lineWidth = 2; ctx.beginPath();
+  for (let i = 0; i < chartData.a.length; i++) { const x = (i/(chartData.a.length-1))*w; const y = h - ((chartData.a[i]-minA)/(maxA-minA))*h*0.9 - h*0.05; if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+  ctx.stroke();
+
+  // Legend
+  ctx.fillStyle = '#4ecdc4'; ctx.fillRect(w-90,10,10,10); ctx.fillStyle = '#e8e8e8'; ctx.font = '11px sans-serif'; ctx.fillText('Voltage', w-75,19);
+  ctx.fillStyle = '#ffd43b'; ctx.fillRect(w-90,26,10,10); ctx.fillStyle = '#e8e8e8'; ctx.fillText('Current', w-75,35);
+  // Scale text
+  if ($('autoScaleChart').checked) {
+    ctx.fillStyle = '#5f6368'; ctx.font = '10px sans-serif';
+    ctx.fillText(`${minV.toFixed(1)}V`, 4, h-4);
+    ctx.fillText(`${maxV.toFixed(1)}V`, 4, 12);
+    ctx.fillText(`${minA.toFixed(2)}A`, w-50, h-4);
+    ctx.fillText(`${maxA.toFixed(2)}A`, w-50, 12);
+  }
+}
+window.addEventListener('resize', drawChart);
+
+// --- Polling ---
+function startPolling() { polling = true; tick(); }
+function tick() { if (!polling || !connected) return; if ($('autoPoll').checked && !seqRunning && !chargeRunning && !ivRunning) cmdReadAll(); pollTimer = setTimeout(tick, parseInt($('pollMs').value)||500); }
+
+// ==================== DATA LOGGER ====================
+function startLogger() {
+  if (!connected) { commLog('Cannot start logger: not connected', 'err'); return; }
+  if (logRunning && logPaused) { logPaused = false; logTick(); updateLogUI(); updateLogButtons(); return; }
+  if (logRunning) return;
+  logRunning = true; logPaused = false;
+  if (logData.length === 0) logStartTime = Date.now();
+  commLog('Data logger started', 'ok');
+  updateLogUI(); updateLogButtons(); logTick();
+}
+function pauseLogger() {
+  if (!logRunning) return;
+  logPaused = !logPaused;
+  if (!logPaused) { logTick(); commLog('Data logger resumed', 'ok'); }
+  else { clearTimeout(logTimer); commLog('Data logger paused', 'info'); }
+  updateLogUI(); updateLogButtons();
+}
+function stopLogger() {
+  if (!logRunning) return;
+  logRunning = false; logPaused = false; clearTimeout(logTimer);
+  commLog('Data logger stopped', 'err');
+  updateLogUI(); updateLogButtons();
+}
+async function logTick() {
+  if (!logRunning || logPaused || !connected) return;
+  const data = await cmdReadAll();
+  if (data) {
+    const point = { t: Date.now(), v: data.v, a: data.a, p: data.p, out: data.out, seqStep: seqRunning ? seqIndex : null, chgState: chargeState };
+    logData.push(point);
+    const maxPts = parseInt($('logMaxPoints').value) || 10000;
+    if (logData.length > maxPts) logData.shift();
+    appendLogRow(point);
+    updateLogUI();
+  }
+  logTimer = setTimeout(logTick, parseInt($('logInterval').value) || 1000);
+}
+function appendLogRow(point, prepend=false) {
+  const tbody = $('logTbody');
+  const tr = document.createElement('tr');
+  const ts = new Date(point.t).toLocaleTimeString('en-GB', {hour12:false}) + '.' + String(Math.floor((point.t % 1000) / 10)).padStart(2,'0');
+  tr.innerHTML = `<td>${ts}</td><td class="col-v">${point.v.toFixed(3)}</td><td class="col-a">${point.a.toFixed(3)}</td><td class="col-p">${point.p.toFixed(1)}</td><td class="col-state">${point.out?'ON':'OFF'}</td><td class="col-state">${point.seqStep !== null ? point.seqStep+1 : '—'}</td><td class="col-state">${point.chgState !== 'idle' ? point.chgState : '—'}</td>`;
+  if (prepend) tbody.insertBefore(tr, tbody.firstChild);
+  else tbody.appendChild(tr);
+  const maxRows = 200;
+  while (tbody.children.length > maxRows) { if (prepend) tbody.removeChild(tbody.lastChild); else tbody.removeChild(tbody.firstChild); }
+  if (!prepend) tbody.parentElement.parentElement.scrollTop = tbody.parentElement.parentElement.scrollHeight;
+}
+function clearLogData() { logData = []; $('logTbody').innerHTML = ''; updateLogUI(); commLog('Log data cleared', 'info'); }
+function exportLogCSV() {
+  if (logData.length === 0) { commLog('No data to export', 'err'); return; }
+  const rows = logData.map(d => { const ts = new Date(d.t).toISOString(); return `${ts},${d.v.toFixed(4)},${d.a.toFixed(4)},${d.p.toFixed(2)},${d.out?'ON':'OFF'},${d.seqStep!==null?d.seqStep+1:''},${d.chgState!=='idle'?d.chgState:''}`; });
+  const csv = 'timestamp,voltage_V,current_A,power_W,output_state,sequence_step,charge_state
+' + rows.join('
+');
+  const blob = new Blob([csv], {type:'text/csv'}); const url = URL.createObjectURL(blob); const a = document.createElement('a');
+  const prefix = $('logPrefix').value || 'hm310t_log';
+  a.href = url; a.download = `${prefix}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`; a.click(); URL.revokeObjectURL(url);
+  commLog(`Exported ${logData.length} points to CSV`, 'ok');
+}
+function exportLogJSON() {
+  if (logData.length === 0) { commLog('No data to export', 'err'); return; }
+  const blob = new Blob([JSON.stringify(logData, null, 2)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a');
+  const prefix = $('logPrefix').value || 'hm310t_log';
+  a.href = url; a.download = `${prefix}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`; a.click(); URL.revokeObjectURL(url);
+  commLog(`Exported ${logData.length} points to JSON`, 'ok');
+}
+
+// ==================== SEQUENCE ENGINE ====================
+function renderSequence() {
+  const tbody = $('seqTbody'); tbody.innerHTML = '';
+  sequence.forEach((step, idx) => {
+    const tr = document.createElement('tr'); tr.dataset.idx = idx;
+    tr.innerHTML = `<td>${idx+1}</td><td><input type="number" min="0" max="30" step="0.01" value="${step.v.toFixed(2)}" class="sv" data-f="v"></td><td><input type="number" min="0" max="10" step="0.001" value="${step.a.toFixed(3)}" class="sa" data-f="a"></td><td><input type="number" min="0" max="3600" step="0.1" value="${step.d.toFixed(1)}" class="sd" data-f="d"></td><td class="act-btns"><button class="btn btn-sm btn-danger" onclick="delStep(${idx})">×</button><button class="btn btn-sm" onclick="dupStep(${idx})">Dup</button></td>`;
+    tbody.appendChild(tr);
+  });
+  $('seqCount').textContent = sequence.length;
+  updateSeqButtons();
+}
+function delStep(idx) { sequence.splice(idx,1); renderSequence(); }
+function dupStep(idx) { sequence.splice(idx+1,0,{...sequence[idx]}); renderSequence(); }
+function addStep(v=0,a=0,d=1) { sequence.push({v:parseFloat(v)||0, a:parseFloat(a)||0, d:parseFloat(d)||1}); renderSequence(); }
+
+$('btnAddStep').addEventListener('click', () => addStep());
+$('btnClearSeq').addEventListener('click', () => { sequence=[]; renderSequence(); commLog('Sequence cleared','info'); });
+
+$('btnGenRamp').addEventListener('click', () => {
+  const start = parseFloat($('rampStart').value) || 0;
+  const end = parseFloat($('rampEnd').value) || 0;
+  const step = parseFloat($('rampStep').value) || 0.5;
+  const dwell = parseFloat($('rampDwell').value) || 1;
+  const curr = parseFloat($('rampCurr').value) || 1;
+  const loops = parseInt($('rampLoop').value) || 1;
+  if (step <= 0) { commLog('Step size must be > 0', 'err'); return; }
+  const steps = [];
+  const count = Math.ceil(Math.abs(end - start) / step);
+  const dir = end >= start ? 1 : -1;
+  for (let i = 0; i <= count; i++) {
+    let v = start + i * step * dir;
+    if (dir > 0 && v > end) v = end;
+    if (dir < 0 && v < end) v = end;
+    v = Math.max(0, Math.min(30, v));
+    steps.push({v: Math.round(v*100)/100, a: curr, d: dwell});
+  }
+  if (steps.length > 1 && Math.abs(steps[steps.length-1].v - steps[steps.length-2].v) < 0.001) steps.pop();
+  sequence = [];
+  for (let l = 0; l < loops; l++) sequence.push(...steps.map(s => ({...s})));
+  renderSequence();
+  commLog(`Generated ramp: ${start}V → ${end}V in ${step}V steps, ${dwell}s dwell, ${loops} loop(s) = ${sequence.length} steps`, 'ok');
+});
+
+$('btnExportSeq').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(sequence, null, 2)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'hm310t_sequence.json'; a.click(); URL.revokeObjectURL(url); commLog('Sequence exported', 'ok');
+});
+$('btnImportSeq').addEventListener('click', () => $('fileImport').click());
+$('fileImport').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => { try { sequence = JSON.parse(ev.target.result); renderSequence(); commLog('Sequence imported', 'ok'); } catch(x) { commLog('Import failed: ' + x.message, 'err'); } };
+  r.readAsText(f); e.target.value = '';
+});
+
+// CSV Import for sequences
+$('btnImportSeqCSV').addEventListener('click', () => $('fileImportCSV').click());
+$('fileImportCSV').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try {
+      const text = ev.target.result;
+      const lines = text.split(/?
+/).filter(l => l.trim());
+      let startIdx = 0;
+      // Detect header
+      const first = lines[0].toLowerCase();
+      if (first.includes('voltage') || first.includes('v') || first.includes('current') || first.includes('a') || first.includes('dwell')) startIdx = 1;
+      const delim = text.includes(';') ? ';' : ',';
+      const newSeq = [];
+      for (let i = startIdx; i < lines.length; i++) {
+        const cols = lines[i].split(delim).map(c => c.trim());
+        if (cols.length < 2) continue;
+        const v = parseFloat(cols[0]); const a = parseFloat(cols[1]); const d = cols.length >= 3 ? parseFloat(cols[2]) : 1;
+        if (!isNaN(v) && !isNaN(a)) newSeq.push({v, a, d: isNaN(d) ? 1 : d});
+      }
+      if (newSeq.length > 0) { sequence = newSeq; renderSequence(); commLog(`Imported ${newSeq.length} steps from CSV`, 'ok'); }
+      else { commLog('No valid steps found in CSV', 'err'); }
+    } catch(x) { commLog('CSV import failed: ' + x.message, 'err'); }
+  };
+  r.readAsText(f); e.target.value = '';
+});
+
+$('btnPlay').addEventListener('click', () => { if (!connected) { commLog('Not connected', 'err'); return; } if (seqRunning && seqPaused) { seqPaused = false; runSequenceStep(); updateSeqUI(); return; } if (sequence.length === 0) return; seqRunning = true; seqPaused = false; seqIndex = 0; seqLoopCount = 0; commLog('Sequence started', 'ok'); updateSeqUI(); updateSeqButtons(); runSequenceStep(); });
+$('btnPause').addEventListener('click', () => { if (!seqRunning) return; seqPaused = !seqPaused; if (!seqPaused) { runSequenceStep(); } else { clearTimeout(seqTimer); commLog('Sequence paused', 'info'); } updateSeqUI(); });
+$('btnStopSeq').addEventListener('click', () => stopSequence());
+
+function stopSequence() {
+  seqRunning = false; seqPaused = false; clearTimeout(seqTimer);
+  seqIndex = 0; seqLoopCount = 0;
+  $('seqProgBar').style.width = '0%';
+  $('seqProgText').textContent = 'Stopped';
+  $('seqStepInfo').textContent = '—';
+  document.querySelectorAll('.seq-table tr').forEach(r => r.classList.remove('active'));
+  updateSeqUI(); updateSeqButtons(); commLog('Sequence stopped', 'err');
+}
+
+async function runSequenceStep() {
+  if (!seqRunning || seqPaused || !connected) return;
+  if (seqIndex >= sequence.length) {
+    seqLoopCount++;
+    const loops = parseInt($('rampLoop').value) || 1;
+    if (loops > 0 && seqLoopCount >= loops) { stopSequence(); commLog('Sequence complete', 'ok'); return; }
+    seqIndex = 0; commLog(`Loop ${seqLoopCount+1} started`, 'info');
+  }
+  const step = sequence[seqIndex];
+  const total = sequence.length;
+  const pct = ((seqIndex + 1) / total) * 100;
+  $('seqProgBar').style.width = pct + '%';
+  $('seqProgText').textContent = `Step ${seqIndex+1} of ${total}`;
+  $('seqStepInfo').textContent = `${step.v.toFixed(2)}V / ${step.a.toFixed(3)}A for ${step.d.toFixed(1)}s`;
+  document.querySelectorAll('.seq-table tr').forEach(r => r.classList.remove('active'));
+  const row = document.querySelector(`.seq-table tr[data-idx="${seqIndex}"]`);
+  if (row) { row.classList.add('active'); row.scrollIntoView({behavior:'smooth', block:'nearest'}); }
+  try {
+    await cmdSetVoltage(step.v);
+    await cmdSetCurrent(step.a);
+    if (!outputOn) await cmdSetOutput(true);
+    commLog(`Step ${seqIndex+1}: ${step.v.toFixed(2)}V / ${step.a.toFixed(3)}A — dwell ${step.d.toFixed(1)}s`, 'info');
+    seqIndex++;
+    const delayMs = Math.round(step.d * 1000);
+    seqTimer = setTimeout(runSequenceStep, delayMs);
+  } catch (e) { commLog('Sequence error: ' + e.message, 'err'); stopSequence(); }
+}
+
+$('seqTbody').addEventListener('change', e => {
+  const inp = e.target.closest('input'); if (!inp) return;
+  const tr = inp.closest('tr'); const idx = parseInt(tr.dataset.idx);
+  const field = inp.dataset.f;
+  sequence[idx][field] = parseFloat(inp.value) || 0;
+});
+
+// ==================== BATTERY CHARGER ====================
+function updateChargerTarget() {
+  const cells = parseInt($('chCells').value) || 1;
+  const cellV = parseFloat($('chCellV').value) || 4.2;
+  const target = cells * cellV;
+  $('chTargetV').textContent = target.toFixed(2) + ' V';
+  return target;
+}
+updateChargerTarget();
+$('chChemistry').addEventListener('change', () => {
+  const opt = $('chChemistry').selectedOptions[0];
+  if ($('chChemistry').value !== 'custom') { $('chCellV').value = opt.dataset.v; $('chTerm').value = opt.dataset.term; }
+  updateChargerTarget();
+});
+$('chCells').addEventListener('input', updateChargerTarget);
+$('chCellV').addEventListener('input', updateChargerTarget);
+
+$('btnChargeStart').addEventListener('click', async () => {
+  if (!connected) { commLog('Not connected', 'err'); return; }
+  if (chargeRunning) return;
+  const cells = parseInt($('chCells').value) || 1;
+  const cellV = parseFloat($('chCellV').value) || 4.2;
+  chargeTargetV = cells * cellV;
+  chargeCurrent = parseFloat($('chCurrent').value) || 1.0;
+  chargeTermI = parseFloat($('chTerm').value) || 0.05;
+  chargeTimeoutMin = parseInt($('chTimeout').value) || 240;
+  if (chargeTargetV > 30) { commLog('Target voltage exceeds 30V limit', 'err'); return; }
+  if (chargeCurrent > 10) { commLog('Charge current exceeds 10A limit', 'err'); return; }
+  chargeRunning = true; chargeState = 'cc'; chargeStartTime = Date.now(); chargeAh = 0;
+  commLog(`Charge started: ${chargeTargetV.toFixed(2)}V / ${chargeCurrent.toFixed(3)}A`, 'ok');
+  updateChargerUI();
+  await cmdSetVoltage(chargeTargetV + 0.5);
+  await cmdSetCurrent(chargeCurrent);
+  await cmdSetOutput(true);
+  chargeLoop();
+});
+$('btnChargeStop').addEventListener('click', () => stopCharger());
+
+function stopCharger() {
+  if (!chargeRunning) return;
+  chargeRunning = false; chargeState = 'idle'; clearTimeout(chargeTimer);
+  cmdSetOutput(false);
+  updateChargerUI();
+  commLog('Charge stopped', 'err');
+}
+
+async function chargeLoop() {
+  if (!chargeRunning || !connected) return;
+  const data = await cmdReadAll();
+  if (data) {
+    const dt = 1.0;
+    chargeAh += data.a * (dt / 3600);
+    updateChargerStats();
+    const elapsedMin = (Date.now() - chargeStartTime) / 60000;
+    if (elapsedMin > chargeTimeoutMin) {
+      chargeState = 'done';
+      await cmdSetOutput(false);
+      updateChargerUI();
+      commLog('Charge complete: timeout reached', 'ok');
+      return;
+    }
+    if (chargeState === 'cc') {
+      if (data.v >= chargeTargetV * 0.995) {
+        chargeState = 'cv';
+        await cmdSetVoltage(chargeTargetV);
+        commLog('Switched to CV mode', 'info');
+      }
+    } else if (chargeState === 'cv') {
+      if (data.a <= chargeTermI) {
+        chargeState = 'done';
+        await cmdSetOutput(false);
+        updateChargerUI();
+        commLog('Charge complete: current below termination threshold', 'ok');
+        return;
+      }
+    }
+  }
+  updateChargerUI();
+  chargeTimer = setTimeout(chargeLoop, 1000);
+}
+
+function updateChargerStats() {
+  if (!chargeRunning) return;
+  const elapsed = Math.floor((Date.now() - chargeStartTime) / 1000);
+  const min = Math.floor(elapsed / 60);
+  const sec = String(elapsed % 60).padStart(2, '0');
+  $('chElapsed').textContent = `${min}:${sec}`;
+  $('chCapacity').textContent = (chargeAh * 1000).toFixed(1) + ' mAh';
+}
+
+// ==================== I-V CURVE TRACER ====================
+const ivCtx = $('ivChart').getContext('2d');
+function drawIVChart() {
+  const c = $('ivChart'), dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight; c.width = w*dpr; c.height = h*dpr; ivCtx.scale(dpr,dpr); ivCtx.clearRect(0,0,w,h);
+  if (ivData.length < 2) return;
+  let minV = Math.min(...ivData.map(d=>d.v)), maxV = Math.max(...ivData.map(d=>d.v));
+  let minI = Math.min(...ivData.map(d=>d.a)), maxI = Math.max(...ivData.map(d=>d.a));
+  const padV = (maxV-minV)*0.1 || 0.1, padI = (maxI-minI)*0.1 || 0.01;
+  minV -= padV; maxV += padV; minI = Math.max(0, minI - padI); maxI += padI;
+  if (maxV === minV) { maxV = minV + 0.5; }
+  if (maxI === minI) { maxI = minI + 0.05; }
+
+  // Grid
+  ivCtx.strokeStyle = '#2a2f38'; ivCtx.lineWidth = 1;
+  for (let i = 1; i < 5; i++) { const y = (h/5)*i; ivCtx.beginPath(); ivCtx.moveTo(0,y); ivCtx.lineTo(w,y); ivCtx.stroke(); const x = (w/5)*i; ivCtx.beginPath(); ivCtx.moveTo(x,0); ivCtx.lineTo(x,h); ivCtx.stroke(); }
+
+  // Curve
+  ivCtx.strokeStyle = '#a78bfa'; ivCtx.lineWidth = 2; ivCtx.beginPath();
+  for (let i = 0; i < ivData.length; i++) {
+    const x = ((ivData[i].v - minV) / (maxV - minV)) * w * 0.9 + w * 0.05;
+    const y = h - ((ivData[i].a - minI) / (maxI - minI)) * h * 0.9 - h * 0.05;
+    if (i === 0) ivCtx.moveTo(x, y); else ivCtx.lineTo(x, y);
+  }
+  ivCtx.stroke();
+  // Points
+  ivCtx.fillStyle = '#a78bfa';
+  for (let i = 0; i < ivData.length; i++) {
+    const x = ((ivData[i].v - minV) / (maxV - minV)) * w * 0.9 + w * 0.05;
+    const y = h - ((ivData[i].a - minI) / (maxI - minI)) * h * 0.9 - h * 0.05;
+    ivCtx.beginPath(); ivCtx.arc(x, y, 3, 0, Math.PI*2); ivCtx.fill();
+  }
+  // Axes labels
+  ivCtx.fillStyle = '#9aa0a6'; ivCtx.font = '11px sans-serif';
+  ivCtx.fillText(`V: ${minV.toFixed(2)} → ${maxV.toFixed(2)} V`, 10, h-6);
+  ivCtx.fillText(`I: ${minI.toFixed(3)} → ${maxI.toFixed(3)} A`, w-140, 14);
+}
+window.addEventListener('resize', drawIVChart);
+
+async function runIVSweep() {
+  if (!connected || ivRunning) return;
+  ivRunning = true; updateAllButtons();
+  const start = parseFloat($('ivStart').value) || 0;
+  const end = parseFloat($('ivEnd').value) || 5;
+  const step = parseFloat($('ivStep').value) || 0.1;
+  const currLim = parseFloat($('ivCurr').value) || 1;
+  const dwell = parseFloat($('ivDwell').value) || 0.2;
+  ivData = [];
+  commLog(`I-V sweep: ${start}V → ${end}V in ${step}V steps`, 'ok');
+
+  const count = Math.ceil(Math.abs(end - start) / step);
+  const dir = end >= start ? 1 : -1;
+  await cmdSetCurrent(currLim);
+  if (!outputOn) await cmdSetOutput(true);
+
+  for (let i = 0; i <= count; i++) {
+    if (!ivRunning) break;
+    let v = start + i * step * dir;
+    if (dir > 0 && v > end) v = end;
+    if (dir < 0 && v < end) v = end;
+    v = Math.max(0, Math.min(30, v));
+    await cmdSetVoltage(v);
+    await new Promise(r => setTimeout(r, Math.round(dwell * 1000)));
+    const data = await cmdReadAll();
+    if (data) {
+      ivData.push({v: data.v, a: data.a});
+      drawIVChart();
+    }
+  }
+  // Compute results
+  computeIVResults();
+  ivRunning = false; updateAllButtons();
+  commLog('I-V sweep complete', 'ok');
+}
+
+function computeIVResults() {
+  if (ivData.length < 2) return;
+  // Vf at 1mA
+  const vfPt = ivData.find(d => d.a >= 0.001);
+  $('ivVf').textContent = vfPt ? vfPt.v.toFixed(3) + ' V' : '—';
+  // Knee voltage: maximum dI/dV
+  let maxSlope = 0, kneeV = 0;
+  for (let i = 1; i < ivData.length; i++) {
+    const dv = ivData[i].v - ivData[i-1].v;
+    if (dv > 0) {
+      const slope = (ivData[i].a - ivData[i-1].a) / dv;
+      if (slope > maxSlope) { maxSlope = slope; kneeV = ivData[i].v; }
+    }
+  }
+  $('ivKnee').textContent = kneeV.toFixed(3) + ' V';
+  // Dynamic resistance at half max current
+  const maxI = Math.max(...ivData.map(d => d.a));
+  const halfI = maxI / 2;
+  const halfPt = ivData.find(d => d.a >= halfI);
+  if (halfPt && halfPt.a > 0) {
+    // Compute local slope around half point
+    const idx = ivData.indexOf(halfPt);
+    const i0 = Math.max(0, idx - 1), i1 = Math.min(ivData.length - 1, idx + 1);
+    const dv = ivData[i1].v - ivData[i0].v;
+    const di = ivData[i1].a - ivData[i0].a;
+    const rdyn = dv / di;
+    $('ivRdyn').textContent = (rdyn > 0 && isFinite(rdyn)) ? rdyn.toFixed(2) + ' Ω' : '—';
+  } else {
+    $('ivRdyn').textContent = '—';
+  }
+}
+
+function stopIV() { ivRunning = false; }
+
+// ==================== PROTECTION SETTINGS ====================
+$('btnApplyProt').addEventListener('click', async () => {
+  if (!connected) { commLog('Not connected', 'err'); return; }
+  const ovp = parseFloat($('setOVP').value) || 30;
+  const ocp = parseFloat($('setOCP').value) || 10;
+  const opp = parseFloat($('setOPP').value) || 300;
+  try {
+    await writeMultipleRegs(REG.OVP_SET, encodeU32(Math.round(ovp * 100)));
+    await writeMultipleRegs(REG.OCP_SET, encodeU32(Math.round(ocp * 1000)));
+    await writeMultipleRegs(REG.OPP_SET, encodeU32(Math.round(opp * 100)));
+    commLog(`Protection set: OVP=${ovp}V OCP=${ocp}A OPP=${opp}W`, 'ok');
+  } catch (e) { commLog('Failed to set protection: ' + e.message, 'err'); }
+});
+$('btnReadProt').addEventListener('click', async () => {
+  if (!connected) { commLog('Not connected', 'err'); return; }
+  try {
+    const [ovp, ocp, opp] = await Promise.all([readHoldingRegs(REG.OVP_SET, 2), readHoldingRegs(REG.OCP_SET, 2), readHoldingRegs(REG.OPP_SET, 2)]);
+    $('setOVP').value = (decodeU32(ovp[0], ovp[1]) / 100).toFixed(2);
+    $('setOCP').value = (decodeU32(ocp[0], ocp[1]) / 1000).toFixed(3);
+    $('setOPP').value = (decodeU32(opp[0], opp[1]) / 100).toFixed(1);
+    commLog('Protection thresholds read from device', 'ok');
+  } catch (e) { commLog('Failed to read protection: ' + e.message, 'err'); }
+});
+
+// ==================== KEYBOARD SHORTCUTS ====================
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); if (connected) cmdSetOutput(!outputOn); }
+  else if (e.code === 'ArrowUp') { e.preventDefault(); const step = e.shiftKey ? 0.01 : 0.1; let v = parseFloat($('inV').value) + step; v = Math.min(30, v); $('inV').value = v.toFixed(2); $('sliderV').value = v; if (connected) cmdSetVoltage(v); }
+  else if (e.code === 'ArrowDown') { e.preventDefault(); const step = e.shiftKey ? 0.01 : 0.1; let v = parseFloat($('inV').value) - step; v = Math.max(0, v); $('inV').value = v.toFixed(2); $('sliderV').value = v; if (connected) cmdSetVoltage(v); }
+  else if (e.code === 'Enter' && e.ctrlKey) { e.preventDefault(); $('btnApply').click(); }
+  else if (e.code === 'KeyS' && e.ctrlKey) { e.preventDefault(); if (logRunning) stopLogger(); else startLogger(); }
+  else if (e.code === 'KeyP' && e.ctrlKey) { e.preventDefault(); if (seqRunning) { if (seqPaused) $('btnPlay').click(); else $('btnPause').click(); } else $('btnPlay').click(); }
+  else if (e.code === 'KeyK' && e.ctrlKey) { e.preventDefault(); $('btnKill').click(); }
+});
+
+// ==================== PERSISTENT SETTINGS ====================
+function saveAllSettings() {
+  const state = {
+    inV: $('inV').value, inA: $('inA').value,
+    rampStart: $('rampStart').value, rampEnd: $('rampEnd').value, rampStep: $('rampStep').value,
+    rampDwell: $('rampDwell').value, rampCurr: $('rampCurr').value, rampLoop: $('rampLoop').value,
+    pollMs: $('pollMs').value, chartPoints: $('chartPoints').value, stepDelay: $('stepDelay').value,
+    simLoadR: $('simLoadR').value, logInterval: $('logInterval').value, logMaxPoints: $('logMaxPoints').value,
+    logPrefix: $('logPrefix').value, logAutoStart: $('logAutoStart').checked,
+    autoPoll: $('autoPoll').checked, autoScaleChart: $('autoScaleChart').checked,
+    setOVP: $('setOVP').value, setOCP: $('setOCP').value, setOPP: $('setOPP').value,
+    alarmEnable: $('alarmEnable').checked, alarmVmin: $('alarmVmin').value, alarmVmax: $('alarmVmax').value,
+    alarmAmin: $('alarmAmin').value, alarmAmax: $('alarmAmax').value, alarmKill: $('alarmKill').checked,
+    chChemistry: $('chChemistry').value, chCells: $('chCells').value, chCellV: $('chCellV').value,
+    chCurrent: $('chCurrent').value, chTerm: $('chTerm').value, chTimeout: $('chTimeout').value,
+    ivStart: $('ivStart').value, ivEnd: $('ivEnd').value, ivStep: $('ivStep').value,
+    ivCurr: $('ivCurr').value, ivDwell: $('ivDwell').value,
+    sequence: sequence,
+    presets: JSON.parse(localStorage.getItem('hm310t_presets') || '[]')
+  };
+  localStorage.setItem('hm310t_full_state', JSON.stringify(state));
+  commLog('Settings saved to localStorage', 'ok');
+}
+function loadAllSettings() {
+  const raw = localStorage.getItem('hm310t_full_state');
+  if (!raw) { commLog('No saved settings found', 'info'); return; }
+  try {
+    const s = JSON.parse(raw);
+    if (s.inV !== undefined) $('inV').value = s.inV;
+    if (s.inA !== undefined) $('inA').value = s.inA;
+    if (s.rampStart !== undefined) $('rampStart').value = s.rampStart;
+    if (s.rampEnd !== undefined) $('rampEnd').value = s.rampEnd;
+    if (s.rampStep !== undefined) $('rampStep').value = s.rampStep;
+    if (s.rampDwell !== undefined) $('rampDwell').value = s.rampDwell;
+    if (s.rampCurr !== undefined) $('rampCurr').value = s.rampCurr;
+    if (s.rampLoop !== undefined) $('rampLoop').value = s.rampLoop;
+    if (s.pollMs !== undefined) $('pollMs').value = s.pollMs;
+    if (s.chartPoints !== undefined) $('chartPoints').value = s.chartPoints;
+    if (s.stepDelay !== undefined) $('stepDelay').value = s.stepDelay;
+    if (s.simLoadR !== undefined) { $('simLoadR').value = s.simLoadR; simLoadR = parseFloat(s.simLoadR) || 10; }
+    if (s.logInterval !== undefined) $('logInterval').value = s.logInterval;
+    if (s.logMaxPoints !== undefined) $('logMaxPoints').value = s.logMaxPoints;
+    if (s.logPrefix !== undefined) $('logPrefix').value = s.logPrefix;
+    if (s.logAutoStart !== undefined) $('logAutoStart').checked = s.logAutoStart;
+    if (s.autoPoll !== undefined) $('autoPoll').checked = s.autoPoll;
+    if (s.autoScaleChart !== undefined) $('autoScaleChart').checked = s.autoScaleChart;
+    if (s.setOVP !== undefined) $('setOVP').value = s.setOVP;
+    if (s.setOCP !== undefined) $('setOCP').value = s.setOCP;
+    if (s.setOPP !== undefined) $('setOPP').value = s.setOPP;
+    if (s.alarmEnable !== undefined) $('alarmEnable').checked = s.alarmEnable;
+    if (s.alarmVmin !== undefined) $('alarmVmin').value = s.alarmVmin;
+    if (s.alarmVmax !== undefined) $('alarmVmax').value = s.alarmVmax;
+    if (s.alarmAmin !== undefined) $('alarmAmin').value = s.alarmAmin;
+    if (s.alarmAmax !== undefined) $('alarmAmax').value = s.alarmAmax;
+    if (s.alarmKill !== undefined) $('alarmKill').checked = s.alarmKill;
+    if (s.chChemistry !== undefined) $('chChemistry').value = s.chChemistry;
+    if (s.chCells !== undefined) $('chCells').value = s.chCells;
+    if (s.chCellV !== undefined) $('chCellV').value = s.chCellV;
+    if (s.chCurrent !== undefined) $('chCurrent').value = s.chCurrent;
+    if (s.chTerm !== undefined) $('chTerm').value = s.chTerm;
+    if (s.chTimeout !== undefined) $('chTimeout').value = s.chTimeout;
+    if (s.ivStart !== undefined) $('ivStart').value = s.ivStart;
+    if (s.ivEnd !== undefined) $('ivEnd').value = s.ivEnd;
+    if (s.ivStep !== undefined) $('ivStep').value = s.ivStep;
+    if (s.ivCurr !== undefined) $('ivCurr').value = s.ivCurr;
+    if (s.ivDwell !== undefined) $('ivDwell').value = s.ivDwell;
+    if (s.sequence && Array.isArray(s.sequence)) { sequence = s.sequence; renderSequence(); }
+    if (s.presets && Array.isArray(s.presets)) { localStorage.setItem('hm310t_presets', JSON.stringify(s.presets)); loadSavedPresets(); }
+    // Update sliders
+    $('sliderV').value = $('inV').value;
+    $('sliderA').value = $('inA').value;
+    updateChargerTarget();
+    commLog('Settings restored from localStorage', 'ok');
+  } catch (e) { commLog('Failed to load settings: ' + e.message, 'err'); }
+}
+function resetAllSettings() {
+  if (!confirm('Reset all settings, sequences, and presets to defaults?')) return;
+  localStorage.removeItem('hm310t_full_state');
+  localStorage.removeItem('hm310t_presets');
+  location.reload();
+}
+
+// Auto-save on input changes
+let saveTimeout;
+function autoSave() {
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(saveAllSettings, 500);
+}
+// Attach auto-save to all inputs
+const allInputs = document.querySelectorAll('input, select');
+allInputs.forEach(inp => inp.addEventListener('change', autoSave));
+
+// ==================== STANDARD EVENTS ====================
+$('btnConnect').addEventListener('click', () => { if (simMode) setSimMode(false); $('connModal').classList.add('show'); });
+$('btnCancelConn').addEventListener('click', () => $('connModal').classList.remove('show'));
+$('btnSelectPort').addEventListener('click', async () => { $('connModal').classList.remove('show'); await openPort(); });
+$('btnDisconnect').addEventListener('click', closePort);
+$('btnSimToggle').addEventListener('click', () => setSimMode(!simMode));
+$('outToggle').addEventListener('click', async () => { if (!connected) return; await cmdSetOutput(!outputOn); });
+$('btnApply').addEventListener('click', async () => {
+  if (!connected) { commLog('Not connected', 'err'); return; }
+  const v = parseFloat($('inV').value), a = parseFloat($('inA').value);
+  if (isNaN(v)||v<0||v>30) { commLog('Voltage out of range', 'err'); return; }
+  if (isNaN(a)||a<0||a>10) { commLog('Current out of range', 'err'); return; }
+  await cmdSetVoltage(v); await cmdSetCurrent(a);
+});
+$('sliderV').addEventListener('input', e => $('inV').value = e.target.value);
+$('inV').addEventListener('input', e => $('sliderV').value = e.target.value);
+$('sliderA').addEventListener('input', e => $('inA').value = e.target.value);
+$('inA').addEventListener('input', e => $('sliderA').value = e.target.value);
+$('presetGrid').addEventListener('click', e => {
+  const btn = e.target.closest('.preset-btn'); if (!btn) return;
+  const v = parseFloat(btn.dataset.v), a = parseFloat(btn.dataset.a);
+  $('inV').value = v.toFixed(2); $('sliderV').value = v;
+  $('inA').value = a.toFixed(3); $('sliderA').value = a;
+  if (connected) { cmdSetVoltage(v); cmdSetCurrent(a); } else { commLog(`Preset loaded (not connected)`, ''); }
+});
+$('btnRead').addEventListener('click', () => { if (connected) cmdReadAll(); });
+$('btnZero').addEventListener('click', async () => { $('inV').value='0.00'; $('sliderV').value=0; $('inA').value='0.000'; $('sliderA').value=0; if (connected) { await cmdSetVoltage(0); await cmdSetCurrent(0); } });
+$('btnKill').addEventListener('click', async () => { if (connected) await cmdSetOutput(false); });
+$('btnClearCommLog').addEventListener('click', () => commLogEl.innerHTML = '');
+$('pollMs').addEventListener('change', () => { clearTimeout(pollTimer); if (connected && $('autoPoll').checked) tick(); });
+$('chartPoints').addEventListener('change', () => { maxChartPts = parseInt($('chartPoints').value)||300; while (chartData.v.length > maxChartPts) { chartData.v.shift(); chartData.a.shift(); chartData.t.shift(); } drawChart(); });
+$('simLoadR').addEventListener('change', () => { simLoadR = parseFloat($('simLoadR').value) || 10; });
+
+$('btnResetE').addEventListener('click', () => resetMathChannels());
+$('btnResetC').addEventListener('click', () => resetMathChannels());
+
+// Logger events
+$('btnLogStart').addEventListener('click', startLogger);
+$('btnLogPause').addEventListener('click', pauseLogger);
+$('btnLogStop').addEventListener('click', stopLogger);
+$('btnClearLogData').addEventListener('click', clearLogData);
+$('btnExportCSV').addEventListener('click', exportLogCSV);
+$('btnExportLogJSON').addEventListener('click', exportLogJSON);
+$('logInterval').addEventListener('change', () => { if (logRunning && !logPaused) { clearTimeout(logTimer); logTick(); } });
+
+// I-V events
+$('btnIVRun').addEventListener('click', runIVSweep);
+$('btnIVClear').addEventListener('click', () => { ivData = []; drawIVChart(); $('ivVf').textContent = '—'; $('ivKnee').textContent = '—'; $('ivRdyn').textContent = '—'; commLog('I-V chart cleared', 'info'); });
+
+// Settings persistence
+$('btnSaveSettings').addEventListener('click', saveAllSettings);
+$('btnLoadSettings').addEventListener('click', loadAllSettings);
+$('btnResetSettings').addEventListener('click', resetAllSettings);
+
+// Saved presets
+function loadSavedPresets() {
+  const c = $('savedPresets'); c.innerHTML = '';
+  const p = JSON.parse(localStorage.getItem('hm310t_presets') || '[]');
+  if (!p.length) { c.innerHTML = '<div style="font-size:11px;color:var(--text-dim);text-align:center;">No saved presets</div>'; return; }
+  p.forEach((pr, idx) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:7px;background:var(--input-bg);border-radius:6px;border:1px solid var(--border);';
+    row.innerHTML = `<span style="font-family:var(--mono);font-size:12px;">${pr.v}V / ${pr.a}A</span><button class="btn btn-sm" data-idx="${idx}">Load</button>`;
+    row.querySelector('button').addEventListener('click', () => { $('inV').value=pr.v; $('sliderV').value=pr.v; $('inA').value=pr.a; $('sliderA').value=pr.a; if (connected) { cmdSetVoltage(parseFloat(pr.v)); cmdSetCurrent(parseFloat(pr.a)); } });
+    c.appendChild(row);
+  });
+}
+$('btnSavePreset').addEventListener('click', () => {
+  const p = JSON.parse(localStorage.getItem('hm310t_presets') || '[]');
+  p.push({v: $('inV').value, a: $('inA').value});
+  localStorage.setItem('hm310t_presets', JSON.stringify(p));
+  loadSavedPresets(); commLog(`Saved preset ${$('inV').value}V / ${$('inA').value}A`, 'ok');
+});
+loadSavedPresets();
+
+// Load settings on startup
+loadAllSettings();
+updateAllButtons();
+commLog('HM310T Controller ready. Click "Connect USB" or enable "Simulation" to begin.', '');
+commLog('Web Serial API required (Chrome/Edge). Keyboard shortcuts active.', '');
+</script>
+</body>
+</html>
