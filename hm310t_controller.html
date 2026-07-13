@@ -1028,9 +1028,7 @@ $('fileImportCSV').addEventListener('change', e => {
   r.onload = ev => {
     try {
       const text = ev.target.result;
-      const lines = text.split(/
-?
-/).filter(l => l.trim());
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
       let startIdx = 0;
       // Detect header
       const first = lines[0].toLowerCase();
