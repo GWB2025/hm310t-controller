@@ -506,16 +506,7 @@
 <footer>HM310T Browser Controller — Web Serial API (Chrome/Edge) — Modbus RTU — Logger — Charger — I-V Tracer — Simulation</footer>
 
 <!-- Connection Modal -->
-<div class="modal-overlay" id="connModal">
-  <div class="modal">
-    <h3>Connect to HM310T</h3>
-    <p>Click "Select Port" to choose your HM310T USB serial device. The supply uses an FTDI USB-to-serial bridge at 9600 baud.</p>
-    <div class="modal-actions">
-      <button class="btn" id="btnCancelConn">Cancel</button>
-      <button class="btn btn-primary" id="btnSelectPort">Select Port</button>
-    </div>
-  </div>
-</div>
+
 
 <script>
 /* ============================================================
@@ -1039,7 +1030,8 @@ $('fileImportCSV').addEventListener('change', e => {
   r.onload = ev => {
     try {
       const text = ev.target.result;
-      const lines = text.split(/?
+      const lines = text.split(/
+?
 /).filter(l => l.trim());
       let startIdx = 0;
       // Detect header
@@ -1437,9 +1429,11 @@ const allInputs = document.querySelectorAll('input, select');
 allInputs.forEach(inp => inp.addEventListener('change', autoSave));
 
 // ==================== STANDARD EVENTS ====================
-$('btnConnect').addEventListener('click', () => { if (simMode) setSimMode(false); $('connModal').classList.add('show'); });
-$('btnCancelConn').addEventListener('click', () => $('connModal').classList.remove('show'));
-$('btnSelectPort').addEventListener('click', async () => { $('connModal').classList.remove('show'); await openPort(); });
+$('btnConnect').addEventListener('click', async () => {
+  if (simMode) setSimMode(false);
+  await openPort();
+});
+// Modal removed - Connect USB goes straight to port picker
 $('btnDisconnect').addEventListener('click', closePort);
 $('btnSimToggle').addEventListener('click', () => setSimMode(!simMode));
 $('outToggle').addEventListener('click', async () => { if (!connected) return; await cmdSetOutput(!outputOn); });
