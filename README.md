@@ -5,10 +5,16 @@ supply, over USB using the Web Serial API. No install, no build step, no server 
 open the HTML file in Chrome or Edge and connect. A simulation mode lets you try
 every feature with no hardware attached.
 
+[![Launch App](https://img.shields.io/badge/Launch%20App-Open%20in%20Browser-4ecdc4?style=for-the-badge&logo=google-chrome&logoColor=white)](https://GWB2025.github.io/hm310t-controller/hm310t_controller.html)
+
 > This is a corrected rewrite. The Modbus register map, the protection decoding,
 > and the charger were all reworked against a **physical HM310T**, because the
 > reverse-engineered map that circulates online is wrong for this instrument in
 > several places that matter.
+
+> **Browser requirement:** Chrome or Edge. The Web Serial API is not implemented
+> in Firefox or Safari, so the launch link will load the page there but cannot
+> connect to hardware.
 
 ## What was wrong before, and what changed
 
@@ -102,6 +108,33 @@ The map used here was measured on a real HM310T; see the table above. The
 instrument's own maximum ratings live in 0x0014–0x0017 and are read on connect,
 so the app clamps to the true ratings rather than an assumed 30 V / 10 A. If your
 unit reports a different model code or ratings, the app adapts to what it reads.
+
+## Launch from GitHub Pages
+
+The app is a single static file, so it can be served straight from **GitHub
+Pages** — anyone can then run it from a URL with no download. This repository
+includes a GitHub Actions workflow (`.github/workflows/static.yml`) that deploys
+the site on every push to `main`.
+
+### Enable it
+
+1. Push this repository to GitHub.
+2. Go to **Settings → Pages**.
+3. Under **Build and deployment**, choose **Source: GitHub Actions**.
+4. The workflow runs on the next push and publishes the site.
+
+Once deployed, open the app at the Pages URL for your repository, for example:
+
+```
+https://GWB2025.github.io/hm310t-controller/hm310t_controller.html
+```
+
+(The URL is `https://<user>.github.io/<repo>/hm310t_controller.html` — substitute
+your own username and repository name. The **Launch App** badge at the top of
+this README points at that address.)
+
+Because Web Serial needs a secure context, this works only over HTTPS — which
+GitHub Pages provides by default — and only in Chrome or Edge.
 
 ## License
 
