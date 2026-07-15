@@ -58,7 +58,8 @@ apply with presets and keyboard shortcuts; hardware protection (OVP/OCP/OPP)
 read/write; a **battery charger** (CC/CV) with chemistry presets and a pack
 preflight; an **I-V curve tracer**; a **voltage ramp**; a **sequence** runner
 with a ramp generator; a **data logger** with CSV/JSON export; software **alarm**
-thresholds with optional auto-kill; and a **simulation mode** that reproduces the
+thresholds with optional auto-kill; a **dark / light view** toggle (dark by
+default, your choice remembered); and a **simulation mode** that reproduces the
 instrument's measured quirks, including a battery model for exercising the
 charger.
 

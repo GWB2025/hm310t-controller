@@ -17,6 +17,25 @@
     --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
   }
+
+  /* Light theme. Applied when <html data-theme="light">. The bright accent,
+     amber, green and yellow are darkened here so they stay legible on white —
+     the dark-theme values wash out. Everything else flows through the same
+     custom properties, so no per-rule light styling is needed beyond the few
+     places below that hardcode a dark colour. */
+  html[data-theme="light"] {
+    --bg: #eef1f5; --panel: #ffffff; --panel-hover: #f2f4f8; --border: #d6dbe3;
+    --text: #1a1d21; --text-sec: #4a5158; --text-dim: #838a93;
+    --accent: #0d9488; --accent-dim: #0b7a70; --accent-glow: rgba(13,148,136,0.12);
+    --danger: #dc2626; --danger-dim: #b91c1c; --danger-glow: rgba(220,38,38,0.10);
+    --positive: #16a34a; --positive-glow: rgba(22,163,74,0.12);
+    --warning: #b7791f; --warning-glow: rgba(183,121,31,0.14);
+    --amber: #c2620e; --violet: #7c5cff; --pink: #db2777; --sky: #0284c7;
+    --input-bg: #f4f6f9;
+  }
+  html[data-theme="light"] .comm-log { background: #0f1419; }        /* keep the log terminal-style, legible on light chrome */
+  html[data-theme="light"] .comm-log .ts { color: #6b7684; }
+  html[data-theme="light"] .lamp .dot { background: #d6dbe3; border-color: #c2c9d2; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; font-size: 13px; }
 
@@ -79,7 +98,7 @@
   .output-label { font-size: 14px; font-weight: 600; }
   .output-label .state { font-size: 11px; color: var(--text-dim); margin-left: 8px; font-weight: 400; }
   .toggle { width: 52px; height: 28px; border-radius: 16px; background: var(--border); position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
-  .toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform 0.2s; }
+  .toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.35); }
   .toggle.on { background: var(--positive); }
   .toggle.on::after { transform: translateX(24px); }
   .toggle.disabled { pointer-events: none; opacity: 0.4; }
@@ -166,6 +185,11 @@
     .stat-strip { grid-template-columns: repeat(2, 1fr); }
   }
 </style>
+<script>
+  /* Apply a saved light preference before the body paints, so there is no
+     flash of the dark default. Dark remains the default when nothing is saved. */
+  try { if (localStorage.getItem("hm310t-theme") === "light") document.documentElement.setAttribute("data-theme", "light"); } catch (e) {}
+</script>
 </head>
 <body>
 <header>
@@ -174,6 +198,7 @@
     <div class="status-pill"><span class="status-dot" id="connDot"></span><span id="connText">Disconnected</span></div>
     <div class="status-pill"><span class="status-dot" id="outDot"></span><span id="outText">Output OFF</span></div>
     <div class="status-pill" id="alarmPill" style="display:none;"><span class="status-dot alarm"></span><span>ALARM</span></div>
+    <button class="btn" id="btnTheme" title="Toggle light / dark view">☀ Light</button>
     <button class="btn btn-toggle" id="btnSim">Simulation: OFF</button>
     <button class="btn btn-primary" id="btnConnect">Connect USB</button>
     <button class="btn" id="btnDisconnect" disabled>Disconnect</button>
@@ -808,6 +833,28 @@ const App = {
 
 function now() { return performance.now(); }
 function tsStr() { const d = new Date(); return d.toTimeString().slice(0, 8); }
+function cssVar(name) { try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); } catch (e) { return ""; } }
+
+/* ---- theme (dark default, light optional, remembered) -------------------- */
+const THEME_KEY = "hm310t-theme";
+function applyTheme(theme, persist) {
+  const light = theme === "light";
+  document.documentElement.setAttribute("data-theme", light ? "light" : "dark");
+  const b = $("btnTheme");
+  if (b) b.textContent = light ? "☾ Dark" : "☀ Light";   // shows the view it switches to
+  if (persist) { try { localStorage.setItem(THEME_KEY, light ? "light" : "dark"); } catch (e) {} }
+  try { drawChart(); drawIV(); } catch (e) {}             // charts read theme colours, so repaint
+}
+function toggleTheme() {
+  const light = document.documentElement.getAttribute("data-theme") === "light";
+  applyTheme(light ? "dark" : "light", true);
+}
+function initTheme() {
+  // the head script may have already set data-theme="light" from a saved
+  // preference; honour whatever is there, defaulting to dark.
+  const light = document.documentElement.getAttribute("data-theme") === "light";
+  applyTheme(light ? "light" : "dark", false);
+}
 
 function commLog(msg, cls = "") {
   const el = $("commLog"); if (!el) return;
@@ -1236,17 +1283,18 @@ function drawChart() {
   const padL = 44, padR = 44, padT = 10, padB = 20;
   const x0 = padL, x1 = w - padR, y0 = padT, y1 = h - padB;
   const vMax = Math.max(0.1, ...v) * 1.1, aMax = Math.max(0.01, ...a) * 1.1;
-  g.strokeStyle = "#2a2f38"; g.lineWidth = 1;
+  const cGrid = cssVar("--border") || "#2a2f38", cV = cssVar("--accent") || "#4ecdc4", cA = cssVar("--amber") || "#ffb454";
+  g.strokeStyle = cGrid; g.lineWidth = 1;
   for (let i = 0; i <= 4; i++) { const y = y0 + (y1 - y0) * i / 4; g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke(); }
   const plot = (arr, max, color) => {
     g.strokeStyle = color; g.lineWidth = 1.5; g.beginPath();
     arr.forEach((val, i) => { const x = x0 + (x1 - x0) * i / (arr.length - 1); const y = y1 - (y1 - y0) * (val / max); i ? g.lineTo(x, y) : g.moveTo(x, y); });
     g.stroke();
   };
-  plot(v, vMax, "#4ecdc4"); plot(a, aMax, "#ffb454");
-  g.fillStyle = "#4ecdc4"; g.font = "10px monospace"; g.textAlign = "right";
+  plot(v, vMax, cV); plot(a, aMax, cA);
+  g.fillStyle = cV; g.font = "10px monospace"; g.textAlign = "right";
   for (let i = 0; i <= 4; i++) { const y = y0 + (y1 - y0) * i / 4; g.fillText((vMax * (1 - i / 4)).toFixed(1), x0 - 4, y + 3); }
-  g.fillStyle = "#ffb454"; g.textAlign = "left";
+  g.fillStyle = cA; g.textAlign = "left";
   for (let i = 0; i <= 4; i++) { const y = y0 + (y1 - y0) * i / 4; g.fillText((aMax * (1 - i / 4)).toFixed(2), x1 + 4, y + 3); }
 }
 function drawIV() {
@@ -1260,12 +1308,13 @@ function drawIV() {
   const x0 = padL, x1 = w - padR, y0 = padT, y1 = h - padB;
   let minV = Math.min(...d.map(p => p.v)), maxV = Math.max(...d.map(p => p.v));
   let maxI = Math.max(...d.map(p => p.a)); if (maxV === minV) maxV = minV + 0.5; if (maxI <= 0) maxI = 0.01;
-  g.strokeStyle = "#2a2f38"; g.lineWidth = 1;
+  const cGrid = cssVar("--border") || "#2a2f38", cCurve = cssVar("--accent") || "#4ecdc4", cAxis = cssVar("--text-dim") || "#5f6368";
+  g.strokeStyle = cGrid; g.lineWidth = 1;
   for (let i = 0; i <= 4; i++) { const y = y0 + (y1 - y0) * i / 4; g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke(); }
-  g.strokeStyle = "#4ecdc4"; g.lineWidth = 1.5; g.beginPath();
+  g.strokeStyle = cCurve; g.lineWidth = 1.5; g.beginPath();
   d.forEach((p, i) => { const x = x0 + (x1 - x0) * (p.v - minV) / (maxV - minV); const y = y1 - (y1 - y0) * (p.a / maxI); i ? g.lineTo(x, y) : g.moveTo(x, y); });
   g.stroke();
-  g.fillStyle = "#5f6368"; g.font = "10px monospace"; g.textAlign = "right";
+  g.fillStyle = cAxis; g.font = "10px monospace"; g.textAlign = "right";
   for (let i = 0; i <= 4; i++) { const y = y0 + (y1 - y0) * i / 4; g.fillText((maxI * (1 - i / 4)).toFixed(3), x0 - 4, y + 3); }
   g.textAlign = "center";
   for (let i = 0; i <= 4; i++) { const x = x0 + (x1 - x0) * i / 4; g.fillText((minV + (maxV - minV) * i / 4).toFixed(1), x, h - 8); }
@@ -1584,6 +1633,7 @@ function buildPanels() {
 /* ---- wiring -------------------------------------------------------------- */
 function wire() {
   $("btnConnect").onclick = () => connect(App.sim && !App.connected ? true : false);
+  $("btnTheme").onclick = toggleTheme;
   $("btnSim").onclick = () => { if (App.connected) return; App.sim = !App.sim; $("btnSim").textContent = "Simulation: " + (App.sim ? "ON" : "OFF"); $("btnSim").classList.toggle("active", App.sim); if (App.sim) connect(true); };
   $("btnDisconnect").onclick = () => disconnect("by user");
   $("btnKill").onclick = () => killOutput();
@@ -1632,6 +1682,7 @@ function endChargeUser() { endCharge("stopped by you", false); guarded(async () 
 /* ---- boot ---------------------------------------------------------------- */
 buildPanels();
 wire();
+initTheme();
 updateConnUI();
 chargePreview();
 commLog("Ready. Connect the HM310T, or switch on Simulation to try it with no hardware.", "info");
